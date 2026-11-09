@@ -1,0 +1,51 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* 壁纸层本身承载透明度 / 模糊 / 饱和度，压暗层独立，保证文字可读性 */
+#media {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  transition: opacity 160ms ease-out;
+}
+
+/* 视频加载前的静态预览与画布/视频叠在同一格子里 */
+#media > * {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: var(--bgcover-fit, cover);
+}
+
+#scrim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#hint {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#hint[hidden] {
+  display: none;
+}

@@ -1,0 +1,178 @@
+{
+  "name": "background-wallpaper-engine",
+  "displayName": "Background-Wallpaper-Engine",
+  "description": "把 Steam Wallpaper Engine 的壁纸（视频 / 场景 / 网页）以及本地导入的视频、图片渲染成 IDE 背景。",
+  "publisher": "Tisako",
+  "author": "Tisako",
+  "version": "0.2.1",
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tisakonicc/Background-Wallpaper-Engine.git"
+  },
+  "homepage": "https://github.com/Tisakonicc/Background-Wallpaper-Engine#readme",
+  "bugs": {
+    "url": "https://github.com/Tisakonicc/Background-Wallpaper-Engine/issues"
+  },
+  "keywords": [
+    "wallpaper",
+    "wallpaper engine",
+    "background",
+    "steam",
+    "video background",
+    "壁纸",
+    "背景"
+  ],
+  "galleryBanner": {
+    "color": "#1f2430",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "*"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "webwallgl": "^3.0.1"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "backgroundWallpaperEngine.panel",
+        "title": "打开壁纸面板",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.choose",
+        "title": "选择壁纸（快速列表）",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.import",
+        "title": "导入本地视频 / 图片…",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.toggle",
+        "title": "开关背景",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.reapply",
+        "title": "重新注入背景层",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.remove",
+        "title": "移除背景并还原 IDE",
+        "category": "Background-Wallpaper-Engine"
+      }
+    ],
+    "configuration": {
+      "title": "Background-Wallpaper-Engine",
+      "properties": {
+        "backgroundWallpaperEngine.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "显示壁纸。关闭时立即隐藏，但保留注入；用“移除背景并还原 IDE”来彻底撤销注入。"
+        },
+        "backgroundWallpaperEngine.wallpaperId": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "当前壁纸的工坊 ID。通过“选择壁纸...”设置。"
+        },
+        "backgroundWallpaperEngine.steamRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "markdownDescription": "Steam 安装目录。留空则自动探测（注册表、常见路径、`libraryfolders.vdf`）。"
+        },
+        "backgroundWallpaperEngine.opacity": {
+          "type": "number",
+          "default": 0.45,
+          "minimum": 0,
+          "maximum": 1,
+          "scope": "application",
+          "description": "壁纸图层的不透明度。"
+        },
+        "backgroundWallpaperEngine.scrim": {
+          "type": "number",
+          "default": 0.45,
+          "minimum": 0,
+          "maximum": 1,
+          "scope": "application",
+          "description": "壁纸与 UI 之间的压暗层。越高文字越清晰，且不会因画面变亮而失效。"
+        },
+        "backgroundWallpaperEngine.blur": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 40,
+          "scope": "application",
+          "description": "壁纸模糊半径（像素）。"
+        },
+        "backgroundWallpaperEngine.saturate": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 3,
+          "scope": "application",
+          "description": "壁纸饱和度。0 为灰度，1 为原始。"
+        },
+        "backgroundWallpaperEngine.fit": {
+          "type": "string",
+          "default": "cover",
+          "enum": [
+            "cover",
+            "contain",
+            "fill"
+          ],
+          "enumDescriptions": [
+            "铺满窗口，裁掉多余部分。",
+            "完整显示壁纸，比例不符时留边。",
+            "拉伸铺满，忽略比例。"
+          ],
+          "scope": "application",
+          "description": "壁纸相对窗口的缩放方式。"
+        },
+        "backgroundWallpaperEngine.fps": {
+          "type": "number",
+          "default": 60,
+          "enum": [
+            30,
+            60
+          ],
+          "scope": "application",
+          "description": "场景 / 网页壁纸的渲染帧率。视频壁纸由浏览器按原生帧率播放，不受此项影响。"
+        },
+        "backgroundWallpaperEngine.pauseOnBlur": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "窗口失焦时暂停播放，重新聚焦后恢复。"
+        }
+      }
+    }
+  }
+}
