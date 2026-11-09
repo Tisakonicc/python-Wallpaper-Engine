@@ -1,0 +1,42 @@
+<idea-plugin>
+    <id>com.tisako.background-wallpaper-engine</id>
+    <name>Background-Wallpaper-Engine</name>
+    <vendor url="https://github.com/Tisakonicc/Background-Wallpaper-Engine">Tisako</vendor>
+
+    <description><![CDATA[
+        把 Steam Wallpaper Engine 的壁纸（视频 / 图片）渲染成编辑器背景。<br/>
+        壁纸由本地 127.0.0.1 上的小型 HTTP 服务提供，用 JCEF 内嵌浏览器显示，
+        不修改 IDE 安装目录里的任何文件，关掉插件即可完全恢复。
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <idea-version since-build="241" until-build="241.*"/>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="com.tisako.wallpaper.WallpaperService"/>
+        <applicationConfigurable parentId="tools"
+                                 instance="com.tisako.wallpaper.WallpaperConfigurable"
+                                 id="com.tisako.wallpaper.settings"
+                                 displayName="壁纸背景"/>
+        <postStartupActivity implementation="com.tisako.wallpaper.WallpaperStartup"/>
+        <notificationGroup id="WallpaperEngine" displayType="BALLOON"/>
+        <toolWindow id="壁纸" anchor="right"
+                    factoryClass="com.tisako.wallpaper.WallpaperPanelFactory"
+                    icon="AllIcons.Actions.Preview"/>
+    </extensions>
+
+    <actions>
+        <group id="WallpaperEngine.Menu" text="壁纸背景" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="WallpaperEngine.Toggle"
+                    class="com.tisako.wallpaper.ToggleWallpaperAction"
+                    text="启用 / 关闭壁纸背景"
+                    description="快速开关编辑器背景壁纸"/>
+            <action id="WallpaperEngine.Settings"
+                    class="com.tisako.wallpaper.OpenSettingsAction"
+                    text="壁纸背景设置…"
+                    description="选择壁纸、调节透明度"/>
+        </group>
+    </actions>
+</idea-plugin>
