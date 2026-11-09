@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.tisako.background-wallpaper-engine</id>
     <name>Background-Wallpaper-Engine</name>
-    <vendor url="https://github.com/Tisakonicc/Background-Wallpaper-Engine">Tisako</vendor>
+    <vendor url="https://github.com/Tisakonicc/python-Wallpaper-Engine">Tisako</vendor>
 
     <description><![CDATA[
         把 Steam Wallpaper Engine 的壁纸（视频 / 图片）渲染成编辑器背景。<br/>

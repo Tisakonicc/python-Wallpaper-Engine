@@ -9,11 +9,11 @@
   "icon": "assets/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Tisakonicc/Background-Wallpaper-Engine.git"
+    "url": "https://github.com/Tisakonicc/python-Wallpaper-Engine.git"
   },
-  "homepage": "https://github.com/Tisakonicc/Background-Wallpaper-Engine#readme",
+  "homepage": "https://github.com/Tisakonicc/python-Wallpaper-Engine#readme",
   "bugs": {
-    "url": "https://github.com/Tisakonicc/Background-Wallpaper-Engine/issues"
+    "url": "https://github.com/Tisakonicc/python-Wallpaper-Engine/issues"
   },
   "keywords": [
     "wallpaper",
