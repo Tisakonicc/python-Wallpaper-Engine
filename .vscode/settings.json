@@ -1,0 +1,41 @@
+{
+    "netbeans.project.jdkhome": "c:\\Program Files\\Java\\jdk-23",
+    "java.jdt.ls.java.home": "c:\\Program Files\\Java\\jdk-23",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-11",
+            "path": "C:\\Program Files\\Java\\jdk-11.0.12"
+        },
+        {
+            "name": "JavaSE-17",
+            "path": "C:\\Program Files\\Java\\jdk-17"
+        },
+        {
+            "name": "JavaSE-21",
+            "path": "C:\\Users\\Tisako\\AppData\\Roaming\\Trae CN\\User\\globalStorage\\pleiades.java-extension-pack-jdk\\java\\21"
+        },
+        {
+            "name": "JavaSE-23",
+            "path": "c:\\Program Files\\Java\\jdk-23",
+            "default": true
+        },
+        {
+            "name": "JavaSE-25",
+            "path": "C:\\Users\\Tisako\\AppData\\Roaming\\Trae CN\\User\\globalStorage\\pleiades.java-extension-pack-jdk\\java\\25"
+        },
+        {
+            "name": "JavaSE-26",
+            "path": "C:\\Users\\Tisako\\AppData\\Roaming\\Trae CN\\User\\globalStorage\\pleiades.java-extension-pack-jdk\\java\\latest"
+        }
+    ],
+    "terminal.integrated.env.windows": {
+        "JAVA_HOME": "c:\\Program Files\\Java\\jdk-23",
+        "PATH": "c:\\Program Files\\Java\\jdk-23\\bin;${env:PATH}"
+    },
+    "maven.terminal.customEnv": [
+        {
+            "environmentVariable": "JAVA_HOME",
+            "value": "c:\\Program Files\\Java\\jdk-23"
+        }
+    ]
+}

@@ -6,8 +6,8 @@
 
 | 目录 | 目标 IDE | 形态 | 状态 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.1 |
-| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.1.2 |
+| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.1 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.2.0 |
 
 ## Trae CN 扩展（trae-extension）
 
@@ -35,6 +35,20 @@ gradle -p pycharm-plugin buildPlugin
 ```
 
 产物在 `pycharm-plugin/build/distributions/`，经 `Settings → Plugins → ⚙ → Install Plugin from Disk...` 安装。
+
+### v0.2.0 修复记录
+
+之前背景一直不显示，根因是两处：
+
+1. **层级放错**：`JLayeredPane` 同一层里是「后添加的组件画在上面」，而 `contentPane` 已经占着
+   `FRAME_CONTENT_LAYER`。原来又把壁纸层加到同一层，结果壁纸盖在 IDE 上面（或者反过来被整块盖掉）。
+   现在壁纸层固定放在 `FRAME_CONTENT_LAYER - 1`，保证绘制顺序在 `contentPane` 之前。
+2. **编辑器不透明**：`EditorComponentImpl` 画背景用的是 Swing 组件自己的 `getBackground()`，
+   只改 colors scheme 的 `HighlighterColors.TEXT` 属性没有效果。现在同时把 `rootPane` / `contentPane` /
+   编辑器组件链设为非不透明，并把编辑器组件背景换成带 alpha 的颜色，壁纸才透得出来。
+
+另外修掉：重复挂载时 `ComponentListener` 越加越多、卸载后编辑器背景色没有还原、
+透明化后拖动窗口留下残影（加了低频重绘兜底）。
 
 ## 环境要求
 

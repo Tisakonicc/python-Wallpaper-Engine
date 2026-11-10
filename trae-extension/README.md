@@ -5,6 +5,7 @@
 - 作者：Tisako
 - 版本：0.2.1
 - 许可证：MIT
+- [Open VSX 市场](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)
 
 ---
 
@@ -27,8 +28,14 @@
 
 ## 安装
 
+### 方式一：从 Open VSX 市场直接安装（推荐）
+
+在 Trae CN / VS Code 中按 `Ctrl+Shift+P` → 输入 `Extensions: Install Extensions` → 搜索 `Background-Wallpaper-Engine` → 安装，或直接访问 [Open VSX 商店页](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)。
+
+### 方式二：本地 vsix 安装
+
 ```powershell
-"D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.0.vsix --force
+"D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.1.vsix --force
 ```
 
 安装后**完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。

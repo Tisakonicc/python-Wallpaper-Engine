@@ -54,6 +54,27 @@ public final class WallpaperServer {
         void toggle();
 
         void rescan();
+
+        /** 弹系统文件框导入本地视频 / 图片（异步，在 EDT 上执行）。 */
+        void importLocal();
+
+        /** 诊断：在壁纸层和纯色块之间切换。 */
+        void toggleDebugSolid();
+
+        /** 诊断：把 IDE 主窗口截图存成 PNG，返回路径。 */
+        String screenshot();
+
+        /** 诊断：输出壁纸层的真实状态与遮挡组件。 */
+        String probe();
+
+        /** 诊断：把诊断色块挂到最上层（验证是遮挡还是挂载失败）。 */
+        void toggleSolidOnTop();
+
+        /** 诊断：输出 IDE 组件树。 */
+        String tree();
+
+        /** 诊断：切换挂载点策略。 */
+        void setMountMode(String mode);
     }
 
     private final Actions actions;
@@ -107,6 +128,25 @@ public final class WallpaperServer {
                     actions.rescan();
                     sendText(exchange, 200, "ok");
                 }
+                case "/import" -> {
+                    actions.importLocal();
+                    sendText(exchange, 200, "ok");
+                }
+                case "/debug/solid" -> {
+                    actions.toggleDebugSolid();
+                    sendText(exchange, 200, "ok");
+                }
+                case "/debug/shot" -> sendText(exchange, 200, actions.screenshot());
+                case "/debug/probe" -> sendText(exchange, 200, actions.probe());
+                case "/debug/top" -> {
+                    actions.toggleSolidOnTop();
+                    sendText(exchange, 200, "ok");
+                }
+                case "/debug/tree" -> sendText(exchange, 200, actions.tree());
+                case "/debug/mount" -> {
+                    actions.setMountMode(parseQuery(exchange.getRequestURI().getRawQuery()).get("mode"));
+                    sendText(exchange, 200, "ok");
+                }
                 case "/media" -> sendFile(exchange, false);
                 case "/preview" -> sendFile(exchange, true);
                 case "/health" -> sendText(exchange, 200, "ok");
@@ -128,35 +168,60 @@ public final class WallpaperServer {
         Snapshot state = actions.snapshot();
         String fit = state.fit == null ? "cover" : state.fit;
         int opacity = Math.max(10, Math.min(100, state.opacity));
-        double scrim = (100 - opacity) / 100.0 * 0.9;
+        // 压暗层有下限，保证 UI 文字在亮色壁纸上也可读
+        double scrim = Math.max(0.4, (100 - opacity) / 100.0 * 0.9);
         int blur = Math.max(0, Math.min(30, state.blur));
 
         String media = "";
+        String previewUrl = "";
         WallpaperEntry entry = state.entry;
         if (entry != null) {
+            if (entry.preview != null) previewUrl = "/preview?id=" + encode(entry.id);
             if (entry.media != null && !"scene".equals(entry.kind) && !"web".equals(entry.kind)) {
                 String url = "/media?id=" + encode(entry.id);
+                // JCEF 对部分视频编码（H.264 等）支持不稳，先给 poster 静帧，
+                // 解码失败再整体回退成预览图，避免整屏死黑
+                String poster = previewUrl.isEmpty() ? "" : " poster=\"" + previewUrl + "\"";
                 media = "video".equals(entry.kind)
-                        ? "<video src=\"" + url + "\" autoplay loop muted playsinline></video>"
-                        : "<img src=\"" + url + "\" alt=\"\">";
-            } else if (entry.preview != null) {
+                        ? "<video id=\"m\" src=\"" + url + "\"" + poster + " autoplay loop muted playsinline onerror=\"fallback()\"></video>"
+                        : "<img id=\"m\" src=\"" + url + "\" alt=\"\" onerror=\"fallback()\">";
+            } else if (!previewUrl.isEmpty()) {
                 // 场景 / 网页壁纸暂不支持实时渲染，先显示缩略图
-                media = "<img src=\"/preview?id=" + encode(entry.id) + "\" alt=\"\">";
+                media = "<img id=\"m\" src=\"" + previewUrl + "\" alt=\"\" onerror=\"fallback()\">";
             }
         }
 
         String html = """
                 <!doctype html>
                 <html><head><meta charset="utf-8"><style>
-                html, body { margin: 0; height: 100%%; overflow: hidden; background: #000; }
+                html, body { margin: 0; height: 100%%; overflow: hidden;
+                             background: linear-gradient(160deg, #23242e, #121318); }
                 video, img { width: 100vw; height: 100vh; object-fit: %s; display: block;
                              filter: blur(%dpx); }
                 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,%.2f); pointer-events: none; }
                 </style></head><body>
                 %s
                 <div class="scrim"></div>
+                <script>
+                var fellBack = false;
+                function fallback() {
+                  if (fellBack) return;
+                  fellBack = true;
+                  var m = document.getElementById('m');
+                  if (!m) return;
+                  var p = '%s';
+                  if (p) { m.outerHTML = '<img id="m" src="' + p + '">'; }
+                  else { m.remove(); }
+                }
+                // H.264 解码失败时 video 不一定触发 error，只是停在黑屏；
+                // 2.5 秒后仍拿不到画面尺寸就按失败处理
+                setTimeout(function() {
+                  var v = document.querySelector('video');
+                  if (v && (v.videoWidth === 0 || v.readyState === 0)) fallback();
+                }, 2500);
+                </script>
                 </body></html>
-                """.formatted(fit, blur, scrim, media);
+                """.formatted(fit, blur, scrim, media, previewUrl);
         sendHtml(exchange, html);
     }
 
@@ -192,6 +257,7 @@ public final class WallpaperServer {
             .empty { padding: 24px; color: #888; text-align: center; grid-column: 1 / -1; }
             </style></head><body>
             <header><h1 id="cur">壁纸背景</h1>
+            <button class="ghost" id="imp">导入</button>
             <button class="ghost" id="rf">刷新</button><button id="tg">…</button></header>
             <div class="grid" id="grid"></div>
             <script>
@@ -214,11 +280,17 @@ public final class WallpaperServer {
               }
               if (!s.entries.length) {
                 g.innerHTML = '<div class="empty">没有找到壁纸：去 Steam 创意工坊订阅，' +
-                  '或在 设置 → 工具 → 壁纸背景 里导入本地文件</div>';
+                  '或点右上角「导入」选择本地视频 / 图片</div>';
               }
             }
             document.getElementById('tg').onclick = async () => { await fetch('/toggle'); load(); };
             document.getElementById('rf').onclick = async () => { await fetch('/rescan'); load(); };
+            document.getElementById('imp').onclick = async () => {
+              await fetch('/import');
+              // 文件框是模态的，选完关闭后过一会儿列表才会更新
+              setTimeout(load, 1500);
+              setTimeout(load, 4000);
+            };
             load();
             setInterval(load, 5000);
             </script></body></html>
