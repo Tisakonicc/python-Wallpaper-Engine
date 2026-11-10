@@ -43,13 +43,13 @@ public final class FrameBackground implements Disposable {
      * @param blur    虚化半径（像素），0 表示不虚化
      */
     public void show(JFrameHolder holder, Image still, float opacity, int blur, String fit,
-                     java.awt.Rectangle scrimRect, int scrimPercent) {
+                     java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
         if (holder == null || holder.panel == null || still == null) return;
         panel = holder.panel;
         int width = Math.max(320, panel.getWidth());
         int height = Math.max(240, panel.getHeight());
 
-        BufferedImage canvas = render(still, width, height, fit, scrimRect, scrimPercent);
+        BufferedImage canvas = render(still, width, height, fit, scrimRect, scrimPercent, posX);
         if (blur > 0) {
             canvas = blur(canvas, Math.min(60, blur));
         }
@@ -84,7 +84,7 @@ public final class FrameBackground implements Disposable {
      * </ul>
      */
     private static BufferedImage render(Image source, int width, int height, String fit,
-                                        java.awt.Rectangle scrimRect, int scrimPercent) {
+                                        java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
         int sw = Math.max(1, source.getWidth(null));
         int sh = Math.max(1, source.getHeight(null));
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
@@ -104,7 +104,8 @@ public final class FrameBackground implements Disposable {
                     : Math.min((double) width / sw, (double) height / sh);
             int dw = Math.max(1, (int) Math.round(sw * scale));
             int dh = Math.max(1, (int) Math.round(sh * scale));
-            int dx = (width - dw) / 2;
+            // 水平位置：50 居中；0 贴左、100 贴右。cover 时会移动裁剪区域，contain 时直接挪画面
+            int dx = (int) Math.round((width - dw) * (Math.max(0, Math.min(100, posX)) / 100.0));
             int dy = (height - dh) / 2;
             g.drawImage(source, dx, dy, dx + dw, dy + dh, 0, 0, sw, sh, null);
         }

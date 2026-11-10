@@ -54,6 +54,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         public int blur = 0;
         /** 代码区额外压暗的比例 0~100，越大文字背后越暗。 */
         public int scrim = 45;
+        /** 水平位置 0~100：50 居中，0 贴左，100 贴右。 */
+        public int posX = 50;
         public List<String> imports = new ArrayList<>();
     }
 
@@ -95,8 +97,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             }
 
             @Override
-            public void updateSettings(int opacity, int blur, int scrim, String fit) {
-                WallpaperService.this.updateSettings(opacity, blur, scrim, fit);
+            public void updateSettings(int opacity, int blur, int scrim, int posX, String fit) {
+                WallpaperService.this.updateSettings(opacity, blur, scrim, posX, fit);
             }
         });
     }
@@ -179,10 +181,11 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     }
 
     /** 面板滑块调用：改参数后立即重画背景（模糊较重时会稍慢，属正常）。 */
-    public void updateSettings(int opacity, int blur, int scrim, String fit) {
+    public void updateSettings(int opacity, int blur, int scrim, int posX, String fit) {
         settings.opacity = Math.max(10, Math.min(100, opacity));
         settings.blur = Math.max(0, Math.min(60, blur));
         settings.scrim = Math.max(0, Math.min(100, scrim));
+        settings.posX = Math.max(0, Math.min(100, posX));
         if (fit != null && !fit.isBlank()) settings.fit = fit;
         apply();
     }
@@ -226,7 +229,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         LOG.info("代码区矩形=" + scrimRect + " 面板=" + holder.panel.getWidth() + "x" + holder.panel.getHeight());
         background = new FrameBackground();
         background.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit,
-                scrimRect, Math.max(0, Math.min(100, settings.scrim)));
+                scrimRect, Math.max(0, Math.min(100, settings.scrim)), Math.max(0, Math.min(100, settings.posX)));
         // 启动时编辑器往往还没显示，算不出代码区矩形；延迟重试几次补上压暗
         if (scrimRect == null && settings.scrim > 0 && scrimRetries < 5) {
             scrimRetries++;
@@ -306,6 +309,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
                 settings.fit,
                 settings.blur,
                 settings.scrim,
+                settings.posX,
                 settings.enabled,
                 entry == null ? "" : entry.id
         );
