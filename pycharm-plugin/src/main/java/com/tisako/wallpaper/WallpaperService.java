@@ -91,6 +91,11 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             public void importLocal() {
                 WallpaperService.this.importLocal();
             }
+
+            @Override
+            public void updateSettings(int opacity, int blur, String fit) {
+                WallpaperService.this.updateSettings(opacity, blur, fit);
+            }
         });
     }
 
@@ -169,6 +174,14 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
                 }
             }
         });
+    }
+
+    /** 面板滑块调用：改参数后立即重画背景（模糊较重时会稍慢，属正常）。 */
+    public void updateSettings(int opacity, int blur, String fit) {
+        settings.opacity = Math.max(10, Math.min(100, opacity));
+        settings.blur = Math.max(0, Math.min(60, blur));
+        if (fit != null && !fit.isBlank()) settings.fit = fit;
+        apply();
     }
 
     public void apply() {

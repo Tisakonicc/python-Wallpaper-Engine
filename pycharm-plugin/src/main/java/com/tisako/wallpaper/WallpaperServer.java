@@ -58,6 +58,9 @@ public final class WallpaperServer {
         /** 弹系统文件框导入本地视频 / 图片（异步，在 EDT 上执行）。 */
         void importLocal();
 
+        /** 更新背景参数（面板上的滑块调用）。 */
+        void updateSettings(int opacity, int blur, String fit);
+
     }
 
     private final Actions actions;
@@ -113,6 +116,13 @@ public final class WallpaperServer {
                 }
                 case "/import" -> {
                     actions.importLocal();
+                    sendText(exchange, 200, "ok");
+                }
+                case "/settings/update" -> {
+                    Map<String, String> query = parseQuery(exchange.getRequestURI().getRawQuery());
+                    int opacity = parseInt(query.get("opacity"), 70);
+                    int blur = parseInt(query.get("blur"), 0);
+                    actions.updateSettings(opacity, blur, query.get("fit"));
                     sendText(exchange, 200, "ok");
                 }
                 case "/media" -> sendFile(exchange, false);
@@ -209,8 +219,16 @@ public final class WallpaperServer {
             button { background: #3b82f6; color: #fff; border: 0; border-radius: 5px;
                      padding: 4px 10px; cursor: pointer; font: inherit; }
             button.ghost { background: transparent; border: 1px solid #555; }
+            .ctrl { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+                    border-bottom: 1px solid #333; flex: 0 0 auto; background: #232329; }
+            .row { display: flex; align-items: center; gap: 8px; }
+            .row label { width: 74px; color: #aaa; flex: 0 0 auto; }
+            .row input[type=range] { flex: 1; accent-color: #3b82f6; }
+            .row .val { width: 38px; text-align: right; color: #9ecbff; flex: 0 0 auto; }
+            .row select { flex: 1; background: #2a2a33; color: #ddd; border: 1px solid #444;
+                          border-radius: 4px; padding: 3px 6px; font: inherit; }
             .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
-                    gap: 8px; padding: 10px; overflow: auto; }
+                    gap: 8px; padding: 10px; overflow: auto; flex: 1 1 auto; }
             .card { border: 1px solid #333; border-radius: 7px; overflow: hidden;
                     cursor: pointer; background: #000; }
             .card:hover { border-color: #3b82f6; }
@@ -227,13 +245,36 @@ public final class WallpaperServer {
             <header><h1 id="cur">壁纸背景</h1>
             <button class="ghost" id="imp">导入</button>
             <button class="ghost" id="rf">刷新</button><button id="tg">…</button></header>
+            <div class="ctrl">
+              <div class="row"><label>不透明度</label>
+                <input type="range" id="op" min="10" max="100" step="5"><span class="val" id="opv"></span></div>
+              <div class="row"><label>背景虚化</label>
+                <input type="range" id="bl" min="0" max="60" step="2"><span class="val" id="blv"></span></div>
+              <div class="row"><label>填充方式</label>
+                <select id="ft">
+                  <option value="contain">适应窗口（完整显示）</option>
+                  <option value="cover">铺满窗口（裁掉边缘）</option>
+                  <option value="stretch">拉伸铺满</option>
+                </select></div>
+            </div>
             <div class="grid" id="grid"></div>
             <script>
             const K = { video: '视频', image: '图片', scene: '场景', web: '网页' };
-            async function load() {
+            let busy = false;
+
+            function paintControls(s) {
+              document.getElementById('op').value = s.opacity;
+              document.getElementById('opv').textContent = s.opacity + '%';
+              document.getElementById('bl').value = s.blur;
+              document.getElementById('blv').textContent = s.blur + 'px';
+              document.getElementById('ft').value = s.fit || 'contain';
+            }
+
+            async function load(refreshControls) {
               const s = await (await fetch('/state.json?t=' + Date.now())).json();
               document.getElementById('tg').textContent = s.enabled ? '关闭' : '启用';
               document.getElementById('cur').textContent = s.current || '未选择壁纸';
+              if (refreshControls) paintControls(s);
               const g = document.getElementById('grid');
               g.innerHTML = '';
               for (const e of s.entries) {
@@ -243,7 +284,7 @@ public final class WallpaperServer {
                   (e.hasPreview ? '<img src="/preview?id=' + encodeURIComponent(e.id) + '&t=' + Date.now() + '">' : '') +
                   '<span class="b">' + (K[e.kind] || e.kind) + '</span></div><div class="t"></div>';
                 c.querySelector('.t').textContent = e.title;
-                c.onclick = async () => { await fetch('/apply?id=' + encodeURIComponent(e.id)); load(); };
+                c.onclick = async () => { await fetch('/apply?id=' + encodeURIComponent(e.id)); load(true); };
                 g.appendChild(c);
               }
               if (!s.entries.length) {
@@ -251,16 +292,33 @@ public final class WallpaperServer {
                   '或点右上角「导入」选择本地视频 / 图片</div>';
               }
             }
-            document.getElementById('tg').onclick = async () => { await fetch('/toggle'); load(); };
-            document.getElementById('rf').onclick = async () => { await fetch('/rescan'); load(); };
+
+            async function push() {
+              if (busy) return;
+              busy = true;
+              const op = document.getElementById('op').value;
+              const bl = document.getElementById('bl').value;
+              const ft = document.getElementById('ft').value;
+              document.getElementById('opv').textContent = op + '%';
+              document.getElementById('blv').textContent = bl + 'px';
+              await fetch('/settings/update?opacity=' + op + '&blur=' + bl + '&fit=' + ft);
+              busy = false;
+            }
+            let pushTimer = null;
+            function pushSoon() { clearTimeout(pushTimer); pushTimer = setTimeout(push, 220); }
+
+            document.getElementById('op').oninput = pushSoon;
+            document.getElementById('bl').oninput = pushSoon;
+            document.getElementById('ft').onchange = push;
+            document.getElementById('tg').onclick = async () => { await fetch('/toggle'); load(true); };
+            document.getElementById('rf').onclick = async () => { await fetch('/rescan'); load(true); };
             document.getElementById('imp').onclick = async () => {
               await fetch('/import');
-              // 文件框是模态的，选完关闭后过一会儿列表才会更新
-              setTimeout(load, 1500);
-              setTimeout(load, 4000);
+              setTimeout(() => load(false), 1500);
+              setTimeout(() => load(true), 4000);
             };
-            load();
-            setInterval(load, 5000);
+            load(true);
+            setInterval(() => load(false), 5000);
             </script></body></html>
             """;
 
@@ -272,6 +330,9 @@ public final class WallpaperServer {
         StringBuilder json = new StringBuilder(4096);
         json.append("{\"enabled\":").append(snapshot.enabled)
                 .append(",\"currentId\":").append(quote(snapshot.currentId))
+                .append(",\"opacity\":").append(snapshot.opacity)
+                .append(",\"blur\":").append(snapshot.blur)
+                .append(",\"fit\":").append(quote(snapshot.fit))
                 .append(",\"current\":").append(quote(snapshot.entry == null ? "" : snapshot.entry.title))
                 .append(",\"entries\":[");
         boolean first = true;
@@ -416,6 +477,15 @@ public final class WallpaperServer {
         exchange.sendResponseHeaders(status, body.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
+        }
+    }
+
+    private static int parseInt(String raw, int fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException err) {
+            return fallback;
         }
     }
 
