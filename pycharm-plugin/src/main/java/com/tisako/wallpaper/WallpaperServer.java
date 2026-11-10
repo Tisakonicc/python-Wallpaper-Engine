@@ -234,9 +234,10 @@ public final class WallpaperServer {
             .row select { flex: 1; background: #2a2a33; color: #ddd; border: 1px solid #444;
                           border-radius: 4px; padding: 3px 6px; font: inherit; }
             .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
-                    gap: 8px; padding: 10px; overflow: auto; flex: 1 1 auto; }
+                    gap: 8px; padding: 10px; overflow: auto; flex: 1 1 auto;
+                    align-items: start; align-content: start; }
             .card { border: 1px solid #333; border-radius: 7px; overflow: hidden;
-                    cursor: pointer; background: #000; }
+                    cursor: pointer; background: #000; align-self: start; }
             .card:hover { border-color: #3b82f6; }
             .card.cur { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
             .card img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
