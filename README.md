@@ -6,7 +6,7 @@
 
 | 目录 | 目标 IDE | 形态 | 状态 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.1 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.2 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.2.0 |
 
 ## Trae CN 扩展（trae-extension）

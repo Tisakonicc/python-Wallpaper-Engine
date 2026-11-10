@@ -3,7 +3,7 @@
 把 **Steam Wallpaper Engine** 的壁纸（视频 / 场景 / 网页）以及**本地导入的视频、图片**渲染成 Trae CN（VS Code 内核 IDE）的背景层。全部在本机运行，不上传任何数据。
 
 - 作者：Tisako
-- 版本：0.2.1
+- 版本：0.2.2
 - 许可证：MIT
 - [Open VSX 市场](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)
 
@@ -35,7 +35,7 @@
 ### 方式二：本地 vsix 安装
 
 ```powershell
-"D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.1.vsix --force
+"D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.2.vsix --force
 ```
 
 安装后**完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
