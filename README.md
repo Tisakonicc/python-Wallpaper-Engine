@@ -9,6 +9,14 @@
 | [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.2 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.2.0 |
 
+## 下载安装（Trae CN / VS Code 通用）
+
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-x.y.z.vsix`；
+2. 打开 IDE 的扩展面板，点右上角 `···` → **从 VSIX 安装**（也可以直接把 vsix 拖进扩展面板）；
+3. **完全退出 IDE 再重新打开**，让扩展完成首次注入。
+
+> Trae CN 的扩展市场与 VS Code 官方市场都**不收录**本扩展，在 IDE 里搜名字是搜不到的。Open VSX 生态（VSCodium / Theia / code-server）可以直接搜 `tisakonicc`。
+
 ## Trae CN 扩展（trae-extension）
 
 - 状态栏按钮弹出壁纸面板：缩略图网格、类型筛选、搜索、即点即换

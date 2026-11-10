@@ -28,17 +28,27 @@
 
 ## 安装
 
-### 方式一：从 Open VSX 市场直接安装（推荐）
+> **重要**：Trae CN 的扩展市场和 VS Code 官方市场都**不收录**本扩展，所以在 IDE 里搜名字是搜不到的。请按下面的方式装。
 
-在 Trae CN / VS Code 中按 `Ctrl+Shift+P` → 输入 `Extensions: Install Extensions` → 搜索 `Background-Wallpaper-Engine` → 安装，或直接访问 [Open VSX 商店页](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)。
+### 方式一：下载 vsix 安装（推荐，Trae CN 与 VS Code 通用）
 
-### 方式二：本地 vsix 安装
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-x.y.z.vsix`；
+2. 打开 IDE 的扩展面板，点右上角 `···` → **从 VSIX 安装**，选中刚下载的文件（也可以直接把 vsix 拖进扩展面板）；
+3. **完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
+
+### 方式二：命令行安装
 
 ```powershell
-"D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.2.vsix --force
+# Trae CN
+& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.2.2.vsix --force
+
+# VS Code
+code --install-extension background-wallpaper-engine-0.2.2.vsix --force
 ```
 
-安装后**完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
+### 方式三：Open VSX（VSCodium / Theia / code-server / Gitpod）
+
+这些编辑器的扩展市场默认走 Open VSX，可以直接搜 `tisakonicc`，或打开 [Open VSX 商店页](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) 安装。
 
 ## 使用
 
