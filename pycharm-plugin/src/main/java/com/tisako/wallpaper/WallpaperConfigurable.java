@@ -31,6 +31,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
     private JCheckBox enabled;
     private JComboBox<WallpaperEntry> wallpaper;
     private JSpinner opacity;
+    private JSpinner blur;
     private JBLabel status;
     private JPanel panel;
 
@@ -56,6 +57,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         selectCurrent();
 
         opacity = new JSpinner(new SpinnerNumberModel(service.settings().opacity, 10, 100, 5));
+        blur = new JSpinner(new SpinnerNumberModel(Math.max(0, service.settings().blur), 0, 60, 2));
 
         JButton importButton = new JButton("导入本地视频 / 图片…");
         importButton.addActionListener(event -> chooseFiles());
@@ -78,6 +80,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
                 .addComponent(enabled)
                 .addLabeledComponent("壁纸", wallpaper, 1, false)
                 .addLabeledComponent("不透明度", opacity, 1, false)
+                .addLabeledComponent("背景虚化（像素）", blur, 1, false)
                 .addComponent(buttons)
                 .addComponent(status)
                 .addComponentFillVertically(new JPanel(), 0)
@@ -145,6 +148,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         WallpaperService.Settings current = service.settings();
         return enabled.isSelected() != current.enabled
                 || opacity.getValue().equals(current.opacity) == false
+                || blur.getValue().equals(current.blur) == false
                 || (wallpaper.getSelectedItem() instanceof WallpaperEntry entry && !entry.id.equals(current.wallpaperId))
                 || !imports.equals(current.imports == null ? List.of() : current.imports);
     }
@@ -154,6 +158,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         WallpaperService.Settings current = service.settings();
         current.enabled = enabled.isSelected();
         current.opacity = (Integer) opacity.getValue();
+        current.blur = (Integer) blur.getValue();
         if (wallpaper.getSelectedItem() instanceof WallpaperEntry entry) current.wallpaperId = entry.id;
         current.imports = new ArrayList<>(imports);
         service.reload();
@@ -164,7 +169,8 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         imports.clear();
         if (service.settings().imports != null) imports.addAll(service.settings().imports);
         enabled.setSelected(service.settings().enabled);
-        opacity.setValue(service.settings().opacity);        refillWallpaperCombo();
+        opacity.setValue(service.settings().opacity);
+        blur.setValue(Math.max(0, service.settings().blur));        refillWallpaperCombo();
         updateStatus();
     }
 

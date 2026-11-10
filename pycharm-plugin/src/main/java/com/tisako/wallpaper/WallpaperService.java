@@ -201,8 +201,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
 
         int opacity = Math.max(10, Math.min(100, settings.opacity));
         background = new FrameBackground();
-        background.show(holder, still, opacity / 100f);
-        LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%）");
+        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur));
+        LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%，虚化 " + settings.blur + "）");
     }
 
     /** 静态图：优先用壁纸自己的预览图，没有就把图片文件本身读进来。 */

@@ -9,6 +9,7 @@ import javax.swing.JPanel;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.Insets;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 
 /**
@@ -18,8 +19,15 @@ import java.awt.image.BufferedImage;
  * 不需要改动任何组件的 opaque 或背景色。关闭时 dispose 掉那个 Disposable，
  * 平台即恢复原样 —— 这是「禁用后完全还原」的实现基础。
  *
- * <p><b>已知限制</b>：平台的背景变换在创建时就会把图像快照下来，替换 canvas 内容不会刷新，
- * 因此这里只支持静态画面（视频壁纸取它的预览帧）。
+ * <p>两个细节：
+ * <ul>
+ *   <li><b>不拉伸</b>：平台的 {@code Fill.SCALE} 会把图硬拉满整个面板。这里先按 cover 规则
+ *       把源图居中裁成与面板同比例，再交给平台缩放，画面就不会变形。</li>
+ *   <li><b>虚化</b>：平台没有模糊能力，所以在生成画布时自己做一次可分离盒式模糊。</li>
+ * </ul>
+ *
+ * <p><b>已知限制</b>：平台背景变换在创建时就把图像快照下来，替换图像内容不会刷新，
+ * 因此只支持静态画面（视频壁纸取预览帧）。
  */
 public final class FrameBackground implements Disposable {
 
@@ -32,16 +40,18 @@ public final class FrameBackground implements Disposable {
      * 显示背景图。
      *
      * @param opacity 0~1，背景图不透明度
+     * @param blur    虚化半径（像素），0 表示不虚化
      */
-    public void show(JFrameHolder holder, Image still, float opacity) {
+    public void show(JFrameHolder holder, Image still, float opacity, int blur) {
         if (holder == null || holder.panel == null || still == null) return;
         panel = holder.panel;
         int width = Math.max(320, panel.getWidth());
         int height = Math.max(240, panel.getHeight());
-        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = canvas.createGraphics();
-        g.drawImage(still, 0, 0, width, height, null);
-        g.dispose();
+
+        BufferedImage canvas = coverRender(still, width, height);
+        if (blur > 0) {
+            canvas = blur(canvas, Math.min(60, blur));
+        }
 
         disposable = Disposer.newDisposable("wallpaper-frame-background");
         IdeBackgroundUtil.createTemporaryBackgroundTransform(
@@ -53,7 +63,91 @@ public final class FrameBackground implements Disposable {
                 new Insets(0, 0, 0, 0),
                 disposable);
         panel.repaint();
-        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity);
+        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur);
+    }
+
+    /** 按 cover 规则居中裁剪后绘制到面板同尺寸的画布，避免被平台拉伸变形。 */
+    private static BufferedImage coverRender(Image source, int width, int height) {
+        int sw = Math.max(1, source.getWidth(null));
+        int sh = Math.max(1, source.getHeight(null));
+        double scale = Math.max((double) width / sw, (double) height / sh);
+        int cropW = (int) Math.round(width / scale);
+        int cropH = (int) Math.round(height / scale);
+        int cropX = Math.max(0, (sw - cropW) / 2);
+        int cropY = Math.max(0, (sh - cropH) / 2);
+
+        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = canvas.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.drawImage(source,
+                0, 0, width, height,
+                cropX, cropY, cropX + Math.min(cropW, sw), cropY + Math.min(cropH, sh),
+                null);
+        g.dispose();
+        return canvas;
+    }
+
+    /** 可分离盒式模糊，两遍滑动窗口，复杂度 O(像素数)，半径大也不卡。 */
+    private static BufferedImage blur(BufferedImage source, int radius) {
+        int w = source.getWidth();
+        int h = source.getHeight();
+        int[] src = source.getRGB(0, 0, w, h, null, 0, w);
+        int[] tmp = new int[src.length];
+        int[] dst = new int[src.length];
+        boxPass(src, tmp, w, h, radius, true);
+        boxPass(tmp, dst, w, h, radius, false);
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        out.setRGB(0, 0, w, h, dst, 0, w);
+        return out;
+    }
+
+    private static void boxPass(int[] src, int[] dst, int w, int h, int radius, boolean horizontal) {
+        int window = radius * 2 + 1;
+        if (horizontal) {
+            for (int y = 0; y < h; y++) {
+                int row = y * w;
+                long r = 0, g = 0, b = 0;
+                for (int i = -radius; i <= radius; i++) {
+                    int x = Math.min(w - 1, Math.max(0, i));
+                    int p = src[row + x];
+                    r += (p >> 16) & 0xFF;
+                    g += (p >> 8) & 0xFF;
+                    b += p & 0xFF;
+                }
+                for (int x = 0; x < w; x++) {
+                    dst[row + x] = ((int) (r / window) << 16) | ((int) (g / window) << 8) | (int) (b / window);
+                    int addX = Math.min(w - 1, x + radius + 1);
+                    int subX = Math.max(0, x - radius);
+                    int add = src[row + addX];
+                    int sub = src[row + subX];
+                    r += ((add >> 16) & 0xFF) - ((sub >> 16) & 0xFF);
+                    g += ((add >> 8) & 0xFF) - ((sub >> 8) & 0xFF);
+                    b += (add & 0xFF) - (sub & 0xFF);
+                }
+            }
+        } else {
+            for (int x = 0; x < w; x++) {
+                long r = 0, g = 0, b = 0;
+                for (int i = -radius; i <= radius; i++) {
+                    int y = Math.min(h - 1, Math.max(0, i));
+                    int p = src[y * w + x];
+                    r += (p >> 16) & 0xFF;
+                    g += (p >> 8) & 0xFF;
+                    b += p & 0xFF;
+                }
+                for (int y = 0; y < h; y++) {
+                    dst[y * w + x] = ((int) (r / window) << 16) | ((int) (g / window) << 8) | (int) (b / window);
+                    int addY = Math.min(h - 1, y + radius + 1);
+                    int subY = Math.max(0, y - radius);
+                    int add = src[addY * w + x];
+                    int sub = src[subY * w + x];
+                    r += ((add >> 16) & 0xFF) - ((sub >> 16) & 0xFF);
+                    g += ((add >> 8) & 0xFF) - ((sub >> 8) & 0xFF);
+                    b += (add & 0xFF) - (sub & 0xFF);
+                }
+            }
+        }
     }
 
     @Override
@@ -70,7 +164,6 @@ public final class FrameBackground implements Disposable {
             panel.repaint();
             panel = null;
         }
-        // 让整个窗口重绘一次，确保回到原始主题外观
         javax.swing.SwingUtilities.invokeLater(IdeBackgroundUtil::repaintAllWindows);
     }
 
