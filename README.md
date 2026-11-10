@@ -66,4 +66,4 @@ gradle -p pycharm-plugin buildPlugin
 - 场景壁纸渲染依赖 [webwallgl](https://www.npmjs.com/package/webwallgl)
 - 思路参考 [dsh-wallpaper-engine](https://github.com/Fish-under-sea/dsh-wallpaper-engine)
 
-许可证：MIT · 作者：Tisako
+许可证：MIT · 作者：Tisakonicc
