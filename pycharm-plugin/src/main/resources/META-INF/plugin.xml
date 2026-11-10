@@ -37,10 +37,6 @@
                     class="com.tisako.wallpaper.OpenSettingsAction"
                     text="壁纸背景设置…"
                     description="选择壁纸、调节透明度"/>
-            <action id="WallpaperEngine.DebugSolid"
-                    class="com.tisako.wallpaper.DebugSolidAction"
-                    text="壁纸诊断：纯色层"
-                    description="把壁纸层换成品红色块，用于判断是层级问题还是渲染问题"/>
         </group>
     </actions>
 </idea-plugin>

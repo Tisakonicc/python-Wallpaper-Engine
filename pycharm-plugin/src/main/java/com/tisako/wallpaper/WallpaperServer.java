@@ -58,23 +58,6 @@ public final class WallpaperServer {
         /** 弹系统文件框导入本地视频 / 图片（异步，在 EDT 上执行）。 */
         void importLocal();
 
-        /** 诊断：在壁纸层和纯色块之间切换。 */
-        void toggleDebugSolid();
-
-        /** 诊断：把 IDE 主窗口截图存成 PNG，返回路径。 */
-        String screenshot();
-
-        /** 诊断：输出壁纸层的真实状态与遮挡组件。 */
-        String probe();
-
-        /** 诊断：把诊断色块挂到最上层（验证是遮挡还是挂载失败）。 */
-        void toggleSolidOnTop();
-
-        /** 诊断：输出 IDE 组件树。 */
-        String tree();
-
-        /** 诊断：切换挂载点策略。 */
-        void setMountMode(String mode);
     }
 
     private final Actions actions;
@@ -130,21 +113,6 @@ public final class WallpaperServer {
                 }
                 case "/import" -> {
                     actions.importLocal();
-                    sendText(exchange, 200, "ok");
-                }
-                case "/debug/solid" -> {
-                    actions.toggleDebugSolid();
-                    sendText(exchange, 200, "ok");
-                }
-                case "/debug/shot" -> sendText(exchange, 200, actions.screenshot());
-                case "/debug/probe" -> sendText(exchange, 200, actions.probe());
-                case "/debug/top" -> {
-                    actions.toggleSolidOnTop();
-                    sendText(exchange, 200, "ok");
-                }
-                case "/debug/tree" -> sendText(exchange, 200, actions.tree());
-                case "/debug/mount" -> {
-                    actions.setMountMode(parseQuery(exchange.getRequestURI().getRawQuery()).get("mode"));
                     sendText(exchange, 200, "ok");
                 }
                 case "/media" -> sendFile(exchange, false);

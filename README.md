@@ -7,7 +7,7 @@
 | 目录 | 目标 IDE | 形态 | 状态 |
 | --- | --- | --- | --- |
 | [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.2 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
-| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.2.0 |
+| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.6.0 |
 
 ## 下载安装（Trae CN / VS Code 通用）
 
@@ -30,10 +30,16 @@
 
 ## PyCharm 插件（pycharm-plugin）
 
+- **整窗壁纸**：项目树、工具栏、编辑器、状态栏全部透出背景
+- 基于平台自带的背景图机制（`IdeBackgroundUtil.createTemporaryBackgroundTransform`），平台会把界面内容按透明度绘制
+- **不修改任何组件的 opaque / 背景色**，背景挂在 `Disposable` 上，禁用或卸载插件时 dispose 即完全还原
 - 右侧「壁纸」工具窗口：缩略图网格面板，点卡片切换壁纸
-- JCEF 内嵌浏览器挂在编辑器 `JLayeredPane` 最底层显示背景，**不修改 IDE 安装目录的任何文件**，关闭插件即完全恢复
-- 本地 `127.0.0.1` HTTP 服务提供壁纸文件（支持 Range 206 视频流）
-- 设置页（`Settings → 工具 → 壁纸背景`）：启用开关、壁纸下拉、不透明度 / 填充 / 模糊、导入本地文件、重新扫描
+- 设置页（`Settings → 工具 → 壁纸背景`）：启用开关、壁纸下拉、不透明度、导入本地文件、重新扫描
+
+### 已知限制
+
+平台的背景变换在创建时就会把图像**快照**下来，替换图像内容不会刷新，因此目前只能显示静态画面 ——
+视频 / 场景 / 网页类壁纸统一取其预览帧。真要做成动态，需要自己接管玻璃窗格的绘制，不在当前实现范围内。
 
 ### 构建
 
@@ -44,19 +50,16 @@ gradle -p pycharm-plugin buildPlugin
 
 产物在 `pycharm-plugin/build/distributions/`，经 `Settings → Plugins → ⚙ → Install Plugin from Disk...` 安装。
 
-### v0.2.0 修复记录
+### v0.6.0 重写记录
 
-之前背景一直不显示，根因是两处：
+早期版本试图把 JCEF 浏览器垫在 IDE 组件下面，但 IntelliJ 的窗口和编辑器会用 `UIUtil.getPanelBackground()`
+这类**常量**直接刷不透明底色，既不看 `setOpaque(false)` 也不看组件背景色，所以每条路都被那层底色挡住。
 
-1. **层级放错**：`JLayeredPane` 同一层里是「后添加的组件画在上面」，而 `contentPane` 已经占着
-   `FRAME_CONTENT_LAYER`。原来又把壁纸层加到同一层，结果壁纸盖在 IDE 上面（或者反过来被整块盖掉）。
-   现在壁纸层固定放在 `FRAME_CONTENT_LAYER - 1`，保证绘制顺序在 `contentPane` 之前。
-2. **编辑器不透明**：`EditorComponentImpl` 画背景用的是 Swing 组件自己的 `getBackground()`，
-   只改 colors scheme 的 `HighlighterColors.TEXT` 属性没有效果。现在同时把 `rootPane` / `contentPane` /
-   编辑器组件链设为非不透明，并把编辑器组件背景换成带 alpha 的颜色，壁纸才透得出来。
+v0.6.0 改为复用平台自己的「背景图像」能力：`IdeBackgroundUtil.createTemporaryBackgroundTransform()`
+内部用 `ADJUST_ALPHA` 渲染提示把整个界面按透明度绘制，因此背景能透到所有面板后面，而且
+关闭时只需 dispose 对应的 `Disposable`，界面即恢复原样（实测禁用前后像素差异 0.02%，仅光标/时钟）。
 
-另外修掉：重复挂载时 `ComponentListener` 越加越多、卸载后编辑器背景色没有还原、
-透明化后拖动窗口留下残影（加了低频重绘兜底）。
+同时删除了此前所有「改组件透明性」的临时代码、JCEF 背景层、以及诊断接口。
 
 ## 环境要求
 

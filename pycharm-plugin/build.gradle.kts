@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.tisako"
-version = "0.3.5"
+version = "0.6.0"
 
 repositories {
     mavenCentral()
