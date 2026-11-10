@@ -52,6 +52,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         public int fps = 10;
         public String fit = "contain";
         public int blur = 0;
+        /** 代码区额外压暗的比例 0~100，越大文字背后越暗。 */
+        public int scrim = 45;
         public List<String> imports = new ArrayList<>();
     }
 
@@ -93,8 +95,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             }
 
             @Override
-            public void updateSettings(int opacity, int blur, String fit) {
-                WallpaperService.this.updateSettings(opacity, blur, fit);
+            public void updateSettings(int opacity, int blur, int scrim, String fit) {
+                WallpaperService.this.updateSettings(opacity, blur, scrim, fit);
             }
         });
     }
@@ -177,9 +179,10 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     }
 
     /** 面板滑块调用：改参数后立即重画背景（模糊较重时会稍慢，属正常）。 */
-    public void updateSettings(int opacity, int blur, String fit) {
+    public void updateSettings(int opacity, int blur, int scrim, String fit) {
         settings.opacity = Math.max(10, Math.min(100, opacity));
         settings.blur = Math.max(0, Math.min(60, blur));
+        settings.scrim = Math.max(0, Math.min(100, scrim));
         if (fit != null && !fit.isBlank()) settings.fit = fit;
         apply();
     }
@@ -189,6 +192,12 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     }
 
     private void applyNow() {
+        // 顺带把本地服务拉起来：面板要读 /state.json，也方便外部调试
+        try {
+            server.port();
+        } catch (IOException err) {
+            LOG.warn("本地服务启动失败", err);
+        }
         clearBackground();
         if (!settings.enabled) {
             LOG.info("壁纸已关闭，界面恢复原样");
@@ -213,8 +222,23 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         }
 
         int opacity = Math.max(10, Math.min(100, settings.opacity));
+        java.awt.Rectangle scrimRect = editorRect(holder);
+        LOG.info("代码区矩形=" + scrimRect + " 面板=" + holder.panel.getWidth() + "x" + holder.panel.getHeight());
         background = new FrameBackground();
-        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit);
+        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit,
+                scrimRect, Math.max(0, Math.min(100, settings.scrim)));
+        // 启动时编辑器往往还没显示，算不出代码区矩形；延迟重试几次补上压暗
+        if (scrimRect == null && settings.scrim > 0 && scrimRetries < 5) {
+            scrimRetries++;
+            javax.swing.Timer retry = new javax.swing.Timer(1500, e -> {
+                ((javax.swing.Timer) e.getSource()).stop();
+                apply();
+            });
+            retry.setRepeats(false);
+            retry.start();
+        } else if (scrimRect != null) {
+            scrimRetries = 0;
+        }
         LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%，虚化 " + settings.blur + "）");
     }
 
@@ -231,6 +255,24 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             return ImageIO.read(path.toFile());
         } catch (IOException err) {
             LOG.warn("读取壁纸图片失败：" + path, err);
+            return null;
+        }
+    }
+
+    /** 编辑器可视区域在 contentPane 坐标系里的矩形，用于只压暗代码区。 */
+    @Nullable
+    private java.awt.Rectangle editorRect(FrameBackground.JFrameHolder holder) {
+        try {
+            com.intellij.openapi.editor.Editor[] editors = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors();
+            if (editors.length == 0) return null;
+            java.awt.Component content = editors[0].getContentComponent();
+            if (!(content instanceof javax.swing.JComponent jc) || !jc.isShowing()) return null;
+            java.awt.Point p = javax.swing.SwingUtilities.convertPoint(jc, 0, 0, holder.panel);
+            java.awt.Rectangle r = jc.getVisibleRect();
+            // 编辑器滚动后组件原点可能在视口之外，必须加上可视区自身的偏移
+            return new java.awt.Rectangle(p.x + r.x, p.y + r.y, Math.max(1, r.width), Math.max(1, r.height));
+        } catch (Throwable err) {
+            LOG.warn("计算编辑器区域失败", err);
             return null;
         }
     }
@@ -263,6 +305,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
                 settings.opacity,
                 settings.fit,
                 settings.blur,
+                settings.scrim,
                 settings.enabled,
                 entry == null ? "" : entry.id
         );
@@ -278,6 +321,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     }
 
     private boolean warned;
+    /** 代码区矩形算不到时的重试次数，避免无限重排。 */
+    private int scrimRetries;
 
     private void warnOnce(String message) {
         if (warned) return;

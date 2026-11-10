@@ -42,17 +42,24 @@ public final class FrameBackground implements Disposable {
      * @param opacity 0~1，背景图不透明度
      * @param blur    虚化半径（像素），0 表示不虚化
      */
-    public void show(JFrameHolder holder, Image still, float opacity, int blur, String fit) {
+    public void show(JFrameHolder holder, Image still, float opacity, int blur, String fit,
+                     java.awt.Rectangle scrimRect, int scrimPercent) {
         if (holder == null || holder.panel == null || still == null) return;
         panel = holder.panel;
         int width = Math.max(320, panel.getWidth());
         int height = Math.max(240, panel.getHeight());
 
-        BufferedImage canvas = render(still, width, height, fit);
+        BufferedImage canvas = render(still, width, height, fit, scrimRect, scrimPercent);
         if (blur > 0) {
             canvas = blur(canvas, Math.min(60, blur));
         }
 
+        try {
+            java.nio.file.Path dbg = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "wallpaper-canvas.png");
+            javax.imageio.ImageIO.write(canvas, "png", dbg.toFile());
+            LOG.info("画布已保存：" + dbg + " 压暗矩形=" + scrimRect + " 压暗=" + scrimPercent);
+        } catch (Throwable ignored) {
+        }
         disposable = Disposer.newDisposable("wallpaper-frame-background");
         IdeBackgroundUtil.createTemporaryBackgroundTransform(
                 panel,
@@ -63,7 +70,7 @@ public final class FrameBackground implements Disposable {
                 new Insets(0, 0, 0, 0),
                 disposable);
         panel.repaint();
-        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur + " 填充=" + fit);
+        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur + " 填充=" + fit + " 代码区压暗=" + scrimPercent);
     }
 
     /**
@@ -76,7 +83,8 @@ public final class FrameBackground implements Disposable {
      *   <li>{@code stretch}：直接拉伸铺满（会变形，仅作备选）。</li>
      * </ul>
      */
-    private static BufferedImage render(Image source, int width, int height, String fit) {
+    private static BufferedImage render(Image source, int width, int height, String fit,
+                                        java.awt.Rectangle scrimRect, int scrimPercent) {
         int sw = Math.max(1, source.getWidth(null));
         int sh = Math.max(1, source.getHeight(null));
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
@@ -99,6 +107,11 @@ public final class FrameBackground implements Disposable {
             int dx = (width - dw) / 2;
             int dy = (height - dh) / 2;
             g.drawImage(source, dx, dy, dx + dw, dy + dh, 0, 0, sw, sh, null);
+        }
+        // 代码区单独压暗：壁纸在项目树/工具栏照常透出，但文字背后更暗，阅读更轻松
+        if (scrimRect != null && scrimPercent > 0) {
+            g.setColor(new java.awt.Color(0, 0, 0, Math.min(100, scrimPercent) * 255 / 100));
+            g.fillRect(scrimRect.x, scrimRect.y, scrimRect.width, scrimRect.height);
         }
         g.dispose();
         return canvas;

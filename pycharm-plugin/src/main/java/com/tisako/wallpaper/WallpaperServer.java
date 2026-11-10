@@ -30,14 +30,16 @@ public final class WallpaperServer {
         public final int opacity;
         public final String fit;
         public final int blur;
+        public final int scrim;
         public final boolean enabled;
         public final String currentId;
 
-        public Snapshot(WallpaperEntry entry, int opacity, String fit, int blur, boolean enabled, String currentId) {
+        public Snapshot(WallpaperEntry entry, int opacity, String fit, int blur, int scrim, boolean enabled, String currentId) {
             this.entry = entry;
             this.opacity = opacity;
             this.fit = fit;
             this.blur = blur;
+            this.scrim = scrim;
             this.enabled = enabled;
             this.currentId = currentId;
         }
@@ -59,7 +61,7 @@ public final class WallpaperServer {
         void importLocal();
 
         /** 更新背景参数（面板上的滑块调用）。 */
-        void updateSettings(int opacity, int blur, String fit);
+        void updateSettings(int opacity, int blur, int scrim, String fit);
 
     }
 
@@ -122,7 +124,8 @@ public final class WallpaperServer {
                     Map<String, String> query = parseQuery(exchange.getRequestURI().getRawQuery());
                     int opacity = parseInt(query.get("opacity"), 70);
                     int blur = parseInt(query.get("blur"), 0);
-                    actions.updateSettings(opacity, blur, query.get("fit"));
+                    int scrim = parseInt(query.get("scrim"), 45);
+                    actions.updateSettings(opacity, blur, scrim, query.get("fit"));
                     sendText(exchange, 200, "ok");
                 }
                 case "/media" -> sendFile(exchange, false);
@@ -250,6 +253,8 @@ public final class WallpaperServer {
                 <input type="range" id="op" min="10" max="100" step="5"><span class="val" id="opv"></span></div>
               <div class="row"><label>背景虚化</label>
                 <input type="range" id="bl" min="0" max="60" step="2"><span class="val" id="blv"></span></div>
+              <div class="row"><label>代码区压暗</label>
+                <input type="range" id="sc" min="0" max="100" step="5"><span class="val" id="scv"></span></div>
               <div class="row"><label>填充方式</label>
                 <select id="ft">
                   <option value="contain">适应窗口（完整显示）</option>
@@ -267,6 +272,8 @@ public final class WallpaperServer {
               document.getElementById('opv').textContent = s.opacity + '%';
               document.getElementById('bl').value = s.blur;
               document.getElementById('blv').textContent = s.blur + 'px';
+              document.getElementById('sc').value = s.scrim;
+              document.getElementById('scv').textContent = s.scrim + '%';
               document.getElementById('ft').value = s.fit || 'contain';
             }
 
@@ -298,10 +305,12 @@ public final class WallpaperServer {
               busy = true;
               const op = document.getElementById('op').value;
               const bl = document.getElementById('bl').value;
+              const sc = document.getElementById('sc').value;
               const ft = document.getElementById('ft').value;
               document.getElementById('opv').textContent = op + '%';
               document.getElementById('blv').textContent = bl + 'px';
-              await fetch('/settings/update?opacity=' + op + '&blur=' + bl + '&fit=' + ft);
+              document.getElementById('scv').textContent = sc + '%';
+              await fetch('/settings/update?opacity=' + op + '&blur=' + bl + '&scrim=' + sc + '&fit=' + ft);
               busy = false;
             }
             let pushTimer = null;
@@ -309,6 +318,7 @@ public final class WallpaperServer {
 
             document.getElementById('op').oninput = pushSoon;
             document.getElementById('bl').oninput = pushSoon;
+            document.getElementById('sc').oninput = pushSoon;
             document.getElementById('ft').onchange = push;
             document.getElementById('tg').onclick = async () => { await fetch('/toggle'); load(true); };
             document.getElementById('rf').onclick = async () => { await fetch('/rescan'); load(true); };
@@ -332,6 +342,7 @@ public final class WallpaperServer {
                 .append(",\"currentId\":").append(quote(snapshot.currentId))
                 .append(",\"opacity\":").append(snapshot.opacity)
                 .append(",\"blur\":").append(snapshot.blur)
+                .append(",\"scrim\":").append(snapshot.scrim)
                 .append(",\"fit\":").append(quote(snapshot.fit))
                 .append(",\"current\":").append(quote(snapshot.entry == null ? "" : snapshot.entry.title))
                 .append(",\"entries\":[");
