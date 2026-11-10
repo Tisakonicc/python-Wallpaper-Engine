@@ -50,7 +50,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         public int opacity = DEFAULT_OPACITY;
         /** 视频帧率，越大越流畅也越吃 CPU。 */
         public int fps = 10;
-        public String fit = "cover";
+        public String fit = "contain";
         public int blur = 0;
         public List<String> imports = new ArrayList<>();
     }
@@ -201,7 +201,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
 
         int opacity = Math.max(10, Math.min(100, settings.opacity));
         background = new FrameBackground();
-        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur));
+        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit);
         LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%，虚化 " + settings.blur + "）");
     }
 
@@ -286,6 +286,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         if (this.settings.imports == null) this.settings.imports = new ArrayList<>();
         if (this.settings.opacity <= 0) this.settings.opacity = DEFAULT_OPACITY;
         if (this.settings.fps <= 0) this.settings.fps = 10;
+        if (this.settings.fit == null || this.settings.fit.isBlank()) this.settings.fit = "contain";
     }
 
     @Override

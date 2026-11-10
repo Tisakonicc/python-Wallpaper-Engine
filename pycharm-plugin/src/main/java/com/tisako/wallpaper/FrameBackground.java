@@ -42,13 +42,13 @@ public final class FrameBackground implements Disposable {
      * @param opacity 0~1，背景图不透明度
      * @param blur    虚化半径（像素），0 表示不虚化
      */
-    public void show(JFrameHolder holder, Image still, float opacity, int blur) {
+    public void show(JFrameHolder holder, Image still, float opacity, int blur, String fit) {
         if (holder == null || holder.panel == null || still == null) return;
         panel = holder.panel;
         int width = Math.max(320, panel.getWidth());
         int height = Math.max(240, panel.getHeight());
 
-        BufferedImage canvas = coverRender(still, width, height);
+        BufferedImage canvas = render(still, width, height, fit);
         if (blur > 0) {
             canvas = blur(canvas, Math.min(60, blur));
         }
@@ -63,31 +63,46 @@ public final class FrameBackground implements Disposable {
                 new Insets(0, 0, 0, 0),
                 disposable);
         panel.repaint();
-        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur);
+        LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur + " 填充=" + fit);
     }
 
-    /** 按 cover 规则居中裁剪后绘制到面板同尺寸的画布，避免被平台拉伸变形。 */
-    private static BufferedImage coverRender(Image source, int width, int height) {
+    /**
+     * 把源图绘制到与面板同尺寸的画布。
+     *
+     * <p>提供三种方式，避免只能靠平台硬拉伸：
+     * <ul>
+     *   <li>{@code contain}（默认）：完整显示整张图，四周留底色 —— 不会裁掉内容；</li>
+     *   <li>{@code cover}：铺满窗口，超出部分裁掉；</li>
+     *   <li>{@code stretch}：直接拉伸铺满（会变形，仅作备选）。</li>
+     * </ul>
+     */
+    private static BufferedImage render(Image source, int width, int height, String fit) {
         int sw = Math.max(1, source.getWidth(null));
         int sh = Math.max(1, source.getHeight(null));
-        double scale = Math.max((double) width / sw, (double) height / sh);
-        int cropW = (int) Math.round(width / scale);
-        int cropH = (int) Math.round(height / scale);
-        int cropX = Math.max(0, (sw - cropW) / 2);
-        int cropY = Math.max(0, (sh - cropH) / 2);
-
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = canvas.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.drawImage(source,
-                0, 0, width, height,
-                cropX, cropY, cropX + Math.min(cropW, sw), cropY + Math.min(cropH, sh),
-                null);
+        // 先铺一层深色底，contain 时的留白才不会透出奇怪的颜色
+        g.setColor(new java.awt.Color(30, 31, 34));
+        g.fillRect(0, 0, width, height);
+
+        String mode = fit == null ? "contain" : fit;
+        if ("stretch".equals(mode)) {
+            g.drawImage(source, 0, 0, width, height, null);
+        } else {
+            double scale = "cover".equals(mode)
+                    ? Math.max((double) width / sw, (double) height / sh)
+                    : Math.min((double) width / sw, (double) height / sh);
+            int dw = Math.max(1, (int) Math.round(sw * scale));
+            int dh = Math.max(1, (int) Math.round(sh * scale));
+            int dx = (width - dw) / 2;
+            int dy = (height - dh) / 2;
+            g.drawImage(source, dx, dy, dx + dw, dy + dh, 0, 0, sw, sh, null);
+        }
         g.dispose();
         return canvas;
     }
-
     /** 可分离盒式模糊，两遍滑动窗口，复杂度 O(像素数)，半径大也不卡。 */
     private static BufferedImage blur(BufferedImage source, int radius) {
         int w = source.getWidth();
