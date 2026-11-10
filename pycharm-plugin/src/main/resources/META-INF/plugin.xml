@@ -4,8 +4,11 @@
     <vendor url="https://github.com/Tisakonicc/python-Wallpaper-Engine">Tisako</vendor>
 
     <description><![CDATA[
-        <b>整窗壁纸</b>：把 Wallpaper Engine 的壁纸铺到整个 IDE 窗口 —— 项目树、工具栏、编辑器、状态栏
-        都能透出背景，代码正常显示在壁纸之上。<br/><br/>
+        Background Wallpaper Engine renders a still frame from Wallpaper Engine as a full-window background
+        behind the entire IDE — project tree, toolbars, editor and status bar all show through, while code
+        stays readable.<br/><br/>
+
+        <b>整窗壁纸</b>：把 Wallpaper Engine 的壁纸铺到整个 IDE 窗口，项目树、工具栏、编辑器、状态栏都能透出背景。<br/><br/>
 
         基于平台自带的背景图机制（IdeBackgroundUtil）渲染，<b>不修改任何组件的透明度或背景色</b>；
         背景挂在 Disposable 上，禁用插件或卸载时界面会完全恢复原状。<br/><br/>
