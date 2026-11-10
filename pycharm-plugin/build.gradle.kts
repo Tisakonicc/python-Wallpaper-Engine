@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.tisako"
-version = "0.7.6"
+version = "0.7.7"
 
 repositories {
     mavenCentral()
@@ -36,11 +36,13 @@ tasks.matching { it.name == "instrumentCode" }.configureEach { enabled = false }
 intellijPlatform {
     buildSearchableOptions = false
     pluginConfiguration {
-        name = "Background-Wallpaper-Engine"
+        name = "Background Wallpaper Engine"
         version = project.version.toString()
         description = """
-            把 Steam Wallpaper Engine 的壁纸（视频 / 图片）渲染成编辑器背景。<br/>
-            壁纸由本地 127.0.0.1 上的小型 HTTP 服务提供，嵌入 JCEF 浏览器显示，不修改 IDE 安装文件。
+            整窗壁纸：把 Wallpaper Engine 的壁纸铺到整个 IDE 窗口，项目树、工具栏、编辑器、状态栏都能透出背景。
+            基于平台自带的背景图机制渲染，不修改任何组件的透明度或背景色；禁用插件时界面完全恢复原状。
+            右侧「壁纸」面板可实时调节不透明度、虚化、代码区压暗、水平位置与填充方式。
+            兼容性：与 Material Theme UI（完整版）冲突。限制：仅支持静态画面。
         """.trimIndent()
         vendor {
             name = "Tisako"
