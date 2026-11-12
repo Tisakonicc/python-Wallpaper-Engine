@@ -9,9 +9,9 @@
 | [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.3 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2022.3+（IntelliJ 平台） | Gradle 插件（zip） | v0.9.13 |
 
-> 最新版直链：
-> Trae 扩展 [background-wallpaper-engine-0.2.3.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest/download/background-wallpaper-engine-0.2.3.vsix) ·
-> PyCharm 插件 [background-wallpaper-engine-0.9.13.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest/download/background-wallpaper-engine-0.9.13.zip)
+> 直链下载（按 tag 固定，不会随 Release 变化）：
+> Trae 扩展 [background-wallpaper-engine-0.2.3.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.2.3/background-wallpaper-engine-0.2.3.vsix) ·
+> PyCharm 插件 [background-wallpaper-engine-0.9.13.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/pycharm-v0.9.13/background-wallpaper-engine-0.9.13.zip)
 
 ## 下载安装（Trae CN / VS Code 通用）
 
