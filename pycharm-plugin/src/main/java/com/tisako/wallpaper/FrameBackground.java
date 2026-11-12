@@ -61,13 +61,12 @@ public final class FrameBackground implements Disposable {
         }
 
         try {
-            java.nio.file.Path dbg = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "wallpaper-canvas.png");
-            javax.imageio.ImageIO.write(canvas, "png", dbg.toFile());
-            LOG.info("画布已保存：" + dbg + " 压暗矩形=" + scrimRect + " 压暗=" + scrimPercent);
-        } catch (Throwable ignored) {
+            disposable = Disposer.newDisposable("wallpaper-frame-background");
+            applyTransform(panel, canvas, Math.max(0.05f, Math.min(1f, opacity)), disposable);
+        } catch (Throwable err) {
+            LOG.warn("应用整窗背景失败", err);
+            return;
         }
-        disposable = Disposer.newDisposable("wallpaper-frame-background");
-        applyTransform(panel, canvas, Math.max(0.05f, Math.min(1f, opacity)), disposable);
         panel.repaint();
         LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur + " 填充=" + fit + " 代码区压暗=" + scrimPercent);
     }
@@ -104,7 +103,7 @@ public final class FrameBackground implements Disposable {
         // 兜底：从老版本就存在的重载 —— 参数换成图片文件路径
         try {
             java.nio.file.Path file = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"),
-                    "wallpaper-canvas-" + System.nanoTime() + ".png");
+                    "wallpaper-canvas.png");
             javax.imageio.ImageIO.write(canvas, "png", file.toFile());
             Class<?> util = Class.forName("com.intellij.openapi.wm.impl.IdeBackgroundUtil");
             Method fallback = util.getMethod("createTemporaryBackgroundTransform", JPanel.class, String.class, Disposable.class);

@@ -70,6 +70,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     private JPanel hookedPanel;
     private java.awt.event.ComponentAdapter resizeHook;
     private javax.swing.Timer resizeTimer;
+    /** 面板尺寸还没就绪时的重试次数。 */
+    private int sizeRetries;
 
     public WallpaperService() {
         server = new WallpaperServer(new WallpaperServer.Actions() {
@@ -227,6 +229,18 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         }
         ensureResizeHook(holder);
 
+        // 面板还在布局中时别急着画：这时拿到的不是最终尺寸，画布比例和面板对不上，
+        // 平台按 SCALE（cover 语义）缩放时会再裁一次 —— 就是「先中裁，过一会才全屏」。
+        if (holder.panel.getWidth() < 400 || holder.panel.getHeight() < 300) {
+            if (sizeRetries < 8) {
+                sizeRetries++;
+                LOG.info("面板尺寸未就绪（" + holder.panel.getWidth() + "x" + holder.panel.getHeight() + "），120ms 后重试");
+                scheduleApply(120);
+                return;
+            }
+        }
+        sizeRetries = 0;
+
         // 视频：静态显示真实画面；GIF 也只取第一帧，不做动图播放
         Image still = loadStill(entry);
         if (still == null) {
@@ -236,11 +250,20 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
 
         int opacity = Math.max(10, Math.min(100, settings.opacity));
         java.awt.Rectangle scrimRect = editorRect(holder);
-        LOG.info("代码区矩形=" + scrimRect + " 面板=" + holder.panel.getWidth() + "x" + holder.panel.getHeight());
+        int renderedWidth = holder.panel.getWidth();
+        int renderedHeight = holder.panel.getHeight();
+        LOG.info("代码区矩形=" + scrimRect + " 面板=" + renderedWidth + "x" + renderedHeight);
         FrameBackground frame = new FrameBackground();
-        frame.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit,
+        frame.show(holder, still, opacity / 100f, Math.max(0, settings.blur), effectiveFit(entry),
                 scrimRect, Math.max(0, Math.min(100, settings.scrim)), Math.max(0, Math.min(100, settings.posX)));
         background = frame;
+        // 渲染期间布局又变了（启动时窗口还在铺开）：立刻按新尺寸再来一次，不用等去抖
+        if (holder.panel.getWidth() != renderedWidth || holder.panel.getHeight() != renderedHeight) {
+            LOG.info("渲染期间尺寸变化：" + renderedWidth + "x" + renderedHeight + " → "
+                    + holder.panel.getWidth() + "x" + holder.panel.getHeight() + "，重渲染");
+            apply();
+            return;
+        }
         // 启动时编辑器往往还没显示，算不出代码区矩形；延迟重试几次补上压暗
         if (scrimRect == null && settings.scrim > 0 && scrimRetries < 5) {
             scrimRetries++;
@@ -254,6 +277,34 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             scrimRetries = 0;
         }
         LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%，虚化 " + settings.blur + "）");
+    }
+
+    /** 延迟一段时间后重新应用（面板尺寸还在变化时用）。 */
+    private void scheduleApply(int delayMs) {
+        javax.swing.Timer timer = new javax.swing.Timer(delayMs, e -> {
+            ((javax.swing.Timer) e.getSource()).stop();
+            apply();
+        });
+        timer.setRepeats(false);
+        timer.start();
+    }
+
+    /** 有没有可用的真实画面（视频 / 真实图片），而不是只有方形预览图。 */
+    private static boolean hasRealMedia(WallpaperEntry entry) {
+        return VideoFrame.supports(entry.media) || WallpaperLibrary.isImage(entry.media);
+    }
+
+    /**
+     * 实际使用的填充方式。
+     *
+     * <p>场景 / 网页壁纸在 PyCharm 里只能拿到 preview.jpg —— 它本身就是从原图居中裁出的方形图。
+     * 对它用「完整显示」会在左右留出大片黑边，看起来像没铺满；这种情况按「铺满」处理，
+     * 观感更接近 Wallpaper Engine 里的效果。
+     */
+    private String effectiveFit(WallpaperEntry entry) {
+        String fit = settings.fit == null ? "contain" : settings.fit;
+        if ("contain".equals(fit) && !hasRealMedia(entry)) return "cover";
+        return fit;
     }
 
     /** 静态图：视频项目解真实画面，图片项目用真实图片文件，其余才用预览图。 */
