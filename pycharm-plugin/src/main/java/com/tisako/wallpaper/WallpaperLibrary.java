@@ -38,18 +38,16 @@ public final class WallpaperLibrary {
 
     public static List<WallpaperEntry> scan(List<String> imports) {
         List<WallpaperEntry> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
         for (Path root : steamRoots()) {
-            Path content = root.resolve("steamapps").resolve("workshop").resolve("content").resolve("431960");
-            if (!Files.isDirectory(content)) continue;
-            try (DirectoryStream<Path> dirs = Files.newDirectoryStream(content)) {
-                for (Path dir : dirs) {
-                    if (!Files.isDirectory(dir)) continue;
-                    WallpaperEntry entry = fromWorkshopDir(dir);
-                    if (entry != null) out.add(entry);
-                }
-            } catch (IOException ignored) {
-                // 某个库读不出来就跳过，不影响其它库
-            }
+            // 创意工坊：steamapps/workshop/content/431960/<id>
+            scanInto(root.resolve("steamapps").resolve("workshop").resolve("content").resolve("431960"), out, seen);
+
+            // Wallpaper Engine 自带的工程与用户自建工程，和 Trae 扩展保持一致
+            Path projects = root.resolve("steamapps").resolve("common")
+                    .resolve("wallpaper_engine").resolve("projects");
+            scanInto(projects.resolve("defaultprojects"), out, seen);
+            scanInto(projects.resolve("myprojects"), out, seen);
         }
         out.sort(Comparator.comparing(e -> e.title.toLowerCase(Locale.ROOT)));
 
@@ -73,6 +71,20 @@ public final class WallpaperLibrary {
     /** 判断是否为可直接读取的图片文件（不含 scene.pkg / index.html 这类）。 */
     static boolean isImage(Path path) {
         return path != null && IMAGE_EXT.contains(ext(path));
+    }
+
+    /** 遍历一个壁纸根目录，把可用的条目追加进 out；按 id 去重，避免多库重复登记同一壁纸。 */
+    private static void scanInto(Path base, List<WallpaperEntry> out, Set<String> seen) {
+        if (!Files.isDirectory(base)) return;
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(base)) {
+            for (Path dir : dirs) {
+                if (!Files.isDirectory(dir)) continue;
+                WallpaperEntry entry = fromWorkshopDir(dir);
+                if (entry != null && seen.add(entry.id)) out.add(entry);
+            }
+        } catch (IOException ignored) {
+            // 某个库读不出来就跳过，不影响其它库
+        }
     }
 
     private static WallpaperEntry fromWorkshopDir(Path dir) {
@@ -140,7 +152,10 @@ public final class WallpaperLibrary {
         if (IMAGE_EXT.contains(ext)) return "image";
         if (VIDEO_EXT.contains(ext)) return "video";
         if (Files.isRegularFile(dir.resolve("index.html"))) return "web";
+        // 工程目录的 scene 壁纸不一定是 scene.pkg，也可能只有 scene.json
         if (Files.isRegularFile(dir.resolve("scene.pkg"))) return "scene";
+        if (Files.isRegularFile(dir.resolve("scenes").resolve("scene.pkg"))) return "scene";
+        if (Files.isRegularFile(dir.resolve("scene.json"))) return "scene";
         return "video";
     }
 
