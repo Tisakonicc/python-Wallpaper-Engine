@@ -247,17 +247,17 @@ public final class WallpaperServer {
             .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
                     gap: 8px; padding: 10px; overflow: auto; flex: 1 1 auto;
                     align-items: start; align-content: start; }
-            .card { border: 1px solid #333; border-radius: 7px; overflow: hidden;
-                    cursor: pointer; background: #000; align-self: start; }
+            .card { position: relative; border: 1px solid #333; border-radius: 7px;
+                    overflow: hidden; cursor: pointer; background: #000; }
             .card:hover { border-color: #3b82f6; }
             .card.cur { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-            .card img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
-            .card .s { position: relative; aspect-ratio: 16/10; background: #2a2a33; }
-            .card .s img { position: absolute; inset: 0; }
+            /* 不用 aspect-ratio / 绝对定位撑高度：JCEF 里容易算错导致卡片重叠 */
+            .card .s { height: 96px; overflow: hidden; background: #2a2a33; }
+            .card .s img { width: 100%; height: 100%; object-fit: cover; display: block; }
             .card .b { position: absolute; top: 4px; left: 4px; background: #3b82f6; color: #fff;
                        font-size: 10px; padding: 1px 5px; border-radius: 3px; }
-            .card .t { padding: 4px 6px; font-size: 11px; white-space: nowrap;
-                       overflow: hidden; text-overflow: ellipsis; }
+            .card .t { padding: 4px 6px; font-size: 11px; line-height: 16px; height: 24px;
+                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .empty { padding: 24px; color: #888; text-align: center; grid-column: 1 / -1; }
             </style></head><body>
             <header><h1 id="cur">壁纸背景</h1>
@@ -312,26 +312,37 @@ public final class WallpaperServer {
                 (FIT_LABEL[v] || FIT_LABEL.contain) + '<span style="float:right">▾</span>';
             }
 
+            let gridSig = '';
+
             async function load(refreshControls) {
               const s = await (await fetch('/state.json?t=' + Date.now())).json();
               document.getElementById('tg').textContent = s.enabled ? '关闭' : '启用';
               document.getElementById('cur').textContent = s.current || '未选择壁纸';
               if (refreshControls) paintControls(s);
               const g = document.getElementById('grid');
-              g.innerHTML = '';
-              for (const e of s.entries) {
-                const c = document.createElement('div');
-                c.className = 'card' + (e.id === s.currentId ? ' cur' : '');
-                c.innerHTML = '<div class="s">' +
-                  (e.hasPreview ? '<img src="/preview?id=' + encodeURIComponent(e.id) + '&t=' + Date.now() + '">' : '') +
-                  '<span class="b">' + (K[e.kind] || e.kind) + '</span></div><div class="t"></div>';
-                c.querySelector('.t').textContent = e.title;
-                c.onclick = async () => { await fetch('/apply?id=' + encodeURIComponent(e.id)); load(true); };
-                g.appendChild(c);
+              // 列表没变化就只更新选中态：整块重建会让所有缩略图重新下载，出现一闪一闪
+              const sig = s.entries.map(e => e.id + '|' + e.title + '|' + e.kind + '|' + (e.hasPreview ? 1 : 0)).join(',');
+              if (sig !== gridSig) {
+                gridSig = sig;
+                g.innerHTML = '';
+                for (const e of s.entries) {
+                  const c = document.createElement('div');
+                  c.className = 'card';
+                  c.dataset.id = e.id;
+                  c.innerHTML = '<div class="s">' +
+                    (e.hasPreview ? '<img src="/preview?id=' + encodeURIComponent(e.id) + '" loading="lazy">' : '') +
+                    '<span class="b">' + (K[e.kind] || e.kind) + '</span></div><div class="t"></div>';
+                  c.querySelector('.t').textContent = e.title;
+                  c.onclick = async () => { await fetch('/apply?id=' + encodeURIComponent(e.id)); load(true); };
+                  g.appendChild(c);
+                }
+                if (!s.entries.length) {
+                  g.innerHTML = '<div class="empty">没有找到壁纸：去 Steam 创意工坊订阅，' +
+                    '或点右上角「导入」选择本地视频 / 图片</div>';
+                }
               }
-              if (!s.entries.length) {
-                g.innerHTML = '<div class="empty">没有找到壁纸：去 Steam 创意工坊订阅，' +
-                  '或点右上角「导入」选择本地视频 / 图片</div>';
+              for (const c of g.children) {
+                if (c.dataset.id) c.classList.toggle('cur', c.dataset.id === s.currentId);
               }
             }
 
@@ -489,7 +500,9 @@ public final class WallpaperServer {
         long length = end - start + 1;
         exchange.getResponseHeaders().add("Content-Type", contentType(file));
         exchange.getResponseHeaders().add("Accept-Ranges", "bytes");
-        exchange.getResponseHeaders().add("Cache-Control", "no-store");
+        // 缩略图允许缓存：面板每 5 秒轮询一次状态，no-store 会让所有图片反复重下、看起来一闪一闪
+        exchange.getResponseHeaders().add("Cache-Control",
+                previewOnly ? "max-age=600" : "no-store");
         if (partial) {
             exchange.getResponseHeaders().add("Content-Range", "bytes " + start + "-" + end + "/" + size);
         }
