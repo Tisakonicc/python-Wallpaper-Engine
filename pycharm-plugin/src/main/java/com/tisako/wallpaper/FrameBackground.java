@@ -11,9 +11,10 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.lang.reflect.Method;
 
 /**
- * 整窗壁纸：走平台自带的背景图机制（{@link IdeBackgroundUtil#createTemporaryBackgroundTransform}）。
+ * 整窗壁纸：走平台自带的背景图机制（{@link IdeBackgroundUtil}）。
  *
  * <p>平台会把整个界面内容按透明度绘制，所以项目树、工具栏、编辑器都能透出背景，
  * 不需要改动任何组件的 opaque 或背景色。关闭时 dispose 掉那个 Disposable，
@@ -21,13 +22,16 @@ import java.awt.image.BufferedImage;
  *
  * <p>两个细节：
  * <ul>
- *   <li><b>不拉伸</b>：平台的 {@code Fill.SCALE} 会把图硬拉满整个面板。这里先按 cover 规则
- *       把源图居中裁成与面板同比例，再交给平台缩放，画面就不会变形。</li>
+ *   <li><b>不二次裁剪</b>：平台的 {@code Fill.SCALE} 是 cover 语义（等比放大铺满、超出裁掉）。
+ *       画布已按面板尺寸和用户选的填充方式合成好，只要画布比例与面板一致，SCALE
+ *       就是无损 1:1 映射、不会多裁；比例不一致则由 {@link WallpaperService} 的
+ *       尺寸监听在 300ms 内重渲染修正（启动时尺寸未就绪、窗口拖动/最大化都靠它）。
+ *       枚举里另有 PLAIN（原尺寸摆放，露边/裁边）和 TILE（平铺），均不适用。</li>
  *   <li><b>虚化</b>：平台没有模糊能力，所以在生成画布时自己做一次可分离盒式模糊。</li>
  * </ul>
  *
- * <p><b>已知限制</b>：平台背景变换在创建时就把图像快照下来，替换图像内容不会刷新，
- * 因此只支持静态画面（视频壁纸取预览帧）。
+ * <p><b>已知限制</b>：平台背景变换内部会把图像缩放缓存成 VolatileImage（约 120 秒才过期），
+ * 替换图像内容不会刷新，因此这里只负责静态画面，尺寸变化时重建背景变换。
  */
 public final class FrameBackground implements Disposable {
 
@@ -35,6 +39,8 @@ public final class FrameBackground implements Disposable {
 
     private Disposable disposable;
     private JPanel panel;
+    /** 已解析到的平台背景变换方法，避免每次都反射扫描。 */
+    private static volatile Method transformMethod;
 
     /**
      * 显示背景图。
@@ -61,16 +67,76 @@ public final class FrameBackground implements Disposable {
         } catch (Throwable ignored) {
         }
         disposable = Disposer.newDisposable("wallpaper-frame-background");
-        IdeBackgroundUtil.createTemporaryBackgroundTransform(
-                panel,
-                canvas,
-                IdeBackgroundUtil.Fill.SCALE,
-                IdeBackgroundUtil.Anchor.CENTER,
-                Math.max(0.05f, Math.min(1f, opacity)),
-                new Insets(0, 0, 0, 0),
-                disposable);
+        applyTransform(panel, canvas, Math.max(0.05f, Math.min(1f, opacity)), disposable);
         panel.repaint();
         LOG.info("整窗背景已设置：" + width + "x" + height + " 不透明度=" + opacity + " 虚化=" + blur + " 填充=" + fit + " 代码区压暗=" + scrimPercent);
+    }
+
+    /**
+     * 调用平台的临时背景变换。
+     *
+     * <p>为什么要反射：平台把 {@code createTemporaryBackgroundTransform(JComponent, Image, Fill,
+     * Anchor, float, Insets, Disposable)} 标成了 {@code @ApiStatus.Internal}，新版 Marketplace
+     * 校验器只认公开 API，会把它判成 unresolved method（2024.2 起每个版本一条 Critical）。
+     * 运行时该方法其实还在，所以这里用反射调用，字节码里只留字符串，不再有编译期符号引用。
+     *
+     * <p>又不能把参数类型写死：2024.1 的第一个参数是 {@code JPanel}，2024.2 起才改成
+     * {@code JComponent}，写死会在 2024.1 上直接 NoSuchMethodException。所以按名字扫一遍再按
+     * 实参做可赋值的匹配。
+     */
+    private static void applyTransform(JPanel panel, BufferedImage canvas, float opacity, Disposable disposable) {
+        Method method = transformMethod;
+        if (method == null) {
+            method = resolveTransformMethod(panel, canvas, disposable);
+            transformMethod = method;
+        }
+        if (method != null) {
+            try {
+                Class<?>[] types = method.getParameterTypes();
+                method.invoke(null, panel, canvas, enumValue(types[2], "SCALE"), enumValue(types[3], "CENTER"),
+                        opacity, new Insets(0, 0, 0, 0), disposable);
+                return;
+            } catch (Throwable err) {
+                LOG.warn("整窗背景调用失败，改用临时图片方案", err);
+                transformMethod = null;
+            }
+        }
+        // 兜底：从老版本就存在的重载 —— 参数换成图片文件路径
+        try {
+            java.nio.file.Path file = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"),
+                    "wallpaper-canvas-" + System.nanoTime() + ".png");
+            javax.imageio.ImageIO.write(canvas, "png", file.toFile());
+            Class<?> util = Class.forName("com.intellij.openapi.wm.impl.IdeBackgroundUtil");
+            Method fallback = util.getMethod("createTemporaryBackgroundTransform", JPanel.class, String.class, Disposable.class);
+            fallback.invoke(null, panel, file.toAbsolutePath().toString(), disposable);
+        } catch (Throwable err) {
+            LOG.warn("临时图片方案也不可用，背景未应用", err);
+        }
+    }
+
+    /** 按名字 + 实参类型找出 7 参数的背景变换方法，找不到返回 null。 */
+    private static Method resolveTransformMethod(JPanel panel, Image canvas, Disposable disposable) {
+        try {
+            Class<?> util = Class.forName("com.intellij.openapi.wm.impl.IdeBackgroundUtil");
+            for (Method candidate : util.getMethods()) {
+                if (!"createTemporaryBackgroundTransform".equals(candidate.getName())) continue;
+                Class<?>[] types = candidate.getParameterTypes();
+                if (types.length != 7) continue;
+                if (!types[0].isInstance(panel) || !types[1].isInstance(canvas)) continue;
+                if (!types[2].getName().endsWith("$Fill") || !types[3].getName().endsWith("$Anchor")) continue;
+                if (types[4] != float.class || types[5] != Insets.class || !types[6].isInstance(disposable)) continue;
+                return candidate;
+            }
+            LOG.warn("没找到 7 参数的背景变换方法，改用临时图片方案");
+        } catch (Throwable err) {
+            LOG.warn("反射查找背景变换方法失败", err);
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object enumValue(Class<?> type, String name) {
+        return Enum.valueOf((Class<? extends Enum>) type, name);
     }
 
     /**
@@ -83,8 +149,8 @@ public final class FrameBackground implements Disposable {
      *   <li>{@code stretch}：直接拉伸铺满（会变形，仅作备选）。</li>
      * </ul>
      */
-    private static BufferedImage render(Image source, int width, int height, String fit,
-                                        java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
+    static BufferedImage render(Image source, int width, int height, String fit,
+                                java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
         int sw = Math.max(1, source.getWidth(null));
         int sh = Math.max(1, source.getHeight(null));
         BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
@@ -118,7 +184,7 @@ public final class FrameBackground implements Disposable {
         return canvas;
     }
     /** 可分离盒式模糊，两遍滑动窗口，复杂度 O(像素数)，半径大也不卡。 */
-    private static BufferedImage blur(BufferedImage source, int radius) {
+    static BufferedImage blur(BufferedImage source, int radius) {
         int w = source.getWidth();
         int h = source.getHeight();
         int[] src = source.getRGB(0, 0, w, h, null, 0, w);

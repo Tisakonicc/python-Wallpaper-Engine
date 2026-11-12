@@ -70,6 +70,11 @@ public final class WallpaperLibrary {
         return entries.isEmpty() ? null : entries.get(0);
     }
 
+    /** 判断是否为可直接读取的图片文件（不含 scene.pkg / index.html 这类）。 */
+    static boolean isImage(Path path) {
+        return path != null && IMAGE_EXT.contains(ext(path));
+    }
+
     private static WallpaperEntry fromWorkshopDir(Path dir) {
         String json = readText(dir.resolve("project.json"));
         String type = group(TYPE, json);

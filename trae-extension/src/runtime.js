@@ -183,6 +183,7 @@ function buildScript(options) {
 
     var focused = true;
     var lastEnabled = null;
+    var lastPong = Date.now();
 
     function postFocus() {
       post({ channel: CHANNEL, type: 'focus', focused: focused && !document.hidden });
@@ -202,7 +203,12 @@ function buildScript(options) {
       if (event.source !== frame.contentWindow) return;
       var data = event.data;
       if (!data || data.channel !== CHANNEL) return;
+      if (data.type === 'pong') {
+        lastPong = Date.now();
+        return;
+      }
       if (data.type !== 'state') return;
+      lastPong = Date.now();
       // 渲染页能回话就说明本地服务通了，锁定这个端口并停止重试
       ready = true;
       activePort = currentPort();
@@ -240,7 +246,11 @@ function buildScript(options) {
       postFocus();
     });
 
-    document.addEventListener('visibilitychange', postFocus);
+    document.addEventListener('visibilitychange', function () {
+      // 窗口在后台时定时器会被浏览器节流，恢复可见时重置计时，避免误判成“文档已死”
+      lastPong = Date.now();
+      postFocus();
+    });
     frame.addEventListener('load', function () {
       postFocus();
       // load 事件在服务拒连时也会触发，所以要接着安排下一次重试
@@ -249,14 +259,31 @@ function buildScript(options) {
     setTimeout(postFocus, 500);
     setTimeout(postFocus, 2000);
 
-    // workbench 会重排 body 里的节点；万一我们的 iframe 被挤掉，重新挂回去
+    // 每 4 秒做三件事：
+    //   1. workbench 重排 body 把 iframe 挤掉 → 重新挂回；
+    //   2. 给渲染页发 ping，确认它的文档还活着；
+    //   3. 连续 12 秒没有回话 → 说明 iframe 文档已经死了（切换主题、渲染进程崩溃时都会出现），
+    //      直接换一个 src 重新加载。只检查 DOM 里还有没有这个元素是发现不了这种故障的。
     setInterval(function () {
+      if (document.hidden) {
+        lastPong = Date.now();
+        return;
+      }
       if (!document.getElementById(FRAME_ID)) {
         mount();
         if (!ready) {
           attempt += 1;
           frame.src = frameUrl();
         }
+        return;
+      }
+      if (!ready) return;
+      post({ channel: CHANNEL, type: 'ping' });
+      if (Date.now() - lastPong > 12000) {
+        lastPong = Date.now();
+        ready = false;
+        attempt += 1;
+        frame.src = frameUrl();
       }
     }, 4000);
 

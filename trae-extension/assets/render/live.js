@@ -417,6 +417,15 @@
     if (event.source !== window.parent) return;
     var data = event.data;
     if (!data || data.channel !== CHANNEL) return;
+    // 父页面用它判断这个文档还活着；渲染进程崩溃时不会再有回话，父页面据此重挂 iframe
+    if (data.type === 'ping') {
+      try {
+        window.parent.postMessage({ channel: CHANNEL, type: 'pong' }, '*');
+      } catch (err) {
+        // 父窗口已关闭
+      }
+      return;
+    }
     if (data.type === 'focus') {
       focused = !!data.focused;
       syncPlayback();

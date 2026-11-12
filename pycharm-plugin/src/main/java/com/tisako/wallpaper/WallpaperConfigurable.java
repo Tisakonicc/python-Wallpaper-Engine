@@ -155,7 +155,7 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         int count = service.entries().size();
         status.setText(count == 0
                 ? "没有找到壁纸：请确认 Steam 已安装 Wallpaper Engine 并订阅了壁纸，或点上面的导入按钮。"
-                : "共 " + count + " 个壁纸（含导入 " + imports.size() + " 个）。场景 / 网页壁纸当前显示缩略图。");
+                : "共 " + count + " 个壁纸（含导入 " + imports.size() + " 个）。场景 / 网页 / 动图壁纸当前显示首帧。");
     }
 
     @Override
@@ -188,7 +188,8 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         enabled.setSelected(service.settings().enabled);
         opacity.setValue(service.settings().opacity);
         blur.setValue(Math.max(0, service.settings().blur));
-        fit.setSelectedIndex(fitIndex(service.settings().fit));        refillWallpaperCombo();
+        fit.setSelectedIndex(fitIndex(service.settings().fit));
+        refillWallpaperCombo();
         updateStatus();
     }
 

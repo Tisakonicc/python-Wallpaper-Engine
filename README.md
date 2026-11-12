@@ -6,8 +6,12 @@
 
 | 目录 | 目标 IDE | 形态 | 状态 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.2 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
-| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2024.1（IntelliJ 平台） | Gradle 插件（zip） | v0.8.0 |
+| [trae-extension/](trae-extension/) | Trae CN（VS Code 内核） | VS Code 扩展（vsix） | v0.2.3 · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [pycharm-plugin/](pycharm-plugin/) | PyCharm 2022.3+（IntelliJ 平台） | Gradle 插件（zip） | v0.9.13 |
+
+> 最新版直链：
+> Trae 扩展 [background-wallpaper-engine-0.2.3.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest/download/background-wallpaper-engine-0.2.3.vsix) ·
+> PyCharm 插件 [background-wallpaper-engine-0.9.13.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest/download/background-wallpaper-engine-0.9.13.zip)
 
 ## 下载安装（Trae CN / VS Code 通用）
 
@@ -33,8 +37,8 @@
 - **整窗壁纸**：项目树、工具栏、编辑器、状态栏全部透出背景
 - 基于平台自带的背景图机制（`IdeBackgroundUtil.createTemporaryBackgroundTransform`），平台会把界面内容按透明度绘制
 - **不修改任何组件的 opaque / 背景色**，背景挂在 `Disposable` 上，禁用或卸载插件时 dispose 即完全还原
-- 右侧「壁纸」工具窗口：缩略图网格 + **不透明度 / 背景虚化 / 代码区压暗 / 填充方式** 四个实时调节项，拖动即生效
-- 设置页（`Settings → 工具 → 壁纸背景`）：启用开关、壁纸下拉、不透明度、导入本地文件、重新扫描
+- 右侧「壁纸」工具窗口：缩略图网格 + **不透明度 / 背景虚化 / 代码区压暗 / 水平位置 / 填充方式** 实时调节项，拖动即生效
+- 设置页（`Settings → 工具 → 壁纸背景`）：启用开关、壁纸下拉、不透明度、填充方式、导入本地文件、重新扫描
 
 ### 兼容性声明
 
@@ -45,10 +49,20 @@ Material Theme UI 会接管界面背景与组件绘制的控制权，覆盖本�
 
 处理方式：二选一 —— 禁用 Material Theme UI，或在「壁纸」面板里关闭壁纸。
 Material Theme UI **Lite** 只调整配色、不接管组件绘制，理论上影响更小，但未逐一验证。
-### 已知限制
+### 静态画面（v0.9.13）
 
-平台的背景变换在创建时就会把图像**快照**下来，替换图像内容不会刷新，因此目前只能显示静态画面 ——
-视频 / 场景 / 网页类壁纸统一取其预览帧。真要做成动态，需要自己接管玻璃窗格的绘制，不在当前实现范围内。
+平台只提供「静态背景图」能力：背景变换在创建时就把图像**快照**下来（内部缩放缓存的 `VolatileImage`
+约 120 秒才过期），替换图像内容不会刷新。要逐帧刷新只能每帧重建一次背景变换，实测代价过高
+（JCodec 解一帧 4K 约 2.6 秒，JCEF 方案在整窗 OSR 下明显卡顿），因此 v0.9.7 起**彻底移除动图**，
+视频 / GIF / 场景 / 网页类壁纸统一显示一张静态画面（视频取 1.5 秒处的真实帧，避开黑场片头）。
+
+### 版本兼容（v0.9.13）
+
+`since-build=223`，不设上界：2022.3 ~ 2026.x 均可安装（2024.1 上实测正常）。
+
+平台把 `IdeBackgroundUtil.createTemporaryBackgroundTransform` 标成了内部 API，新版校验器会把它判成
+unresolved method，所以代码里改用**反射调用**：按方法名扫描并按实参类型匹配（2024.1 的第一个参数是
+`JPanel`，2024.2 起改成 `JComponent`），字节码里不留编译期符号引用。
 
 ### 构建
 

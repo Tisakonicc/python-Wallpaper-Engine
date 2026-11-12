@@ -21,6 +21,7 @@ import javax.swing.JPanel;
 import java.awt.Component;
 import java.awt.Image;
 import java.awt.Window;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,9 +49,9 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         public String wallpaperId = "";
         /** 背景图不透明度 0~100。 */
         public int opacity = DEFAULT_OPACITY;
-        /** 视频帧率，越大越流畅也越吃 CPU。 */
-        public int fps = 10;
         public String fit = "contain";
+        /** 是否已把 0.9.8 自动改成的「铺满」还原回「完整显示」。 */
+        public boolean fitReverted;
         public int blur = 0;
         /** 代码区额外压暗的比例 0~100，越大文字背后越暗。 */
         public int scrim = 45;
@@ -62,7 +63,13 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     private Settings settings = new Settings();
     private List<WallpaperEntry> entries = List.of();
     private final WallpaperServer server;
-    private FrameBackground background;
+    private Disposable background;
+    /** 服务已释放后，后台解码回调不要再碰界面。 */
+    private volatile boolean disposed;
+    /** 已挂尺寸监听的面板，窗口大小变化后要按新尺寸重渲染画布。 */
+    private JPanel hookedPanel;
+    private java.awt.event.ComponentAdapter resizeHook;
+    private javax.swing.Timer resizeTimer;
 
     public WallpaperService() {
         server = new WallpaperServer(new WallpaperServer.Actions() {
@@ -195,6 +202,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
     }
 
     private void applyNow() {
+        if (disposed) return;
         // 顺带把本地服务拉起来：面板要读 /state.json，也方便外部调试
         try {
             server.port();
@@ -217,7 +225,9 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             LOG.warn("找不到 IDE 主窗口，暂不设置背景");
             return;
         }
+        ensureResizeHook(holder);
 
+        // 视频：静态显示真实画面；GIF 也只取第一帧，不做动图播放
         Image still = loadStill(entry);
         if (still == null) {
             LOG.warn("壁纸没有可用的图片：" + entry.title);
@@ -227,9 +237,10 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         int opacity = Math.max(10, Math.min(100, settings.opacity));
         java.awt.Rectangle scrimRect = editorRect(holder);
         LOG.info("代码区矩形=" + scrimRect + " 面板=" + holder.panel.getWidth() + "x" + holder.panel.getHeight());
-        background = new FrameBackground();
-        background.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit,
+        FrameBackground frame = new FrameBackground();
+        frame.show(holder, still, opacity / 100f, Math.max(0, settings.blur), settings.fit,
                 scrimRect, Math.max(0, Math.min(100, settings.scrim)), Math.max(0, Math.min(100, settings.posX)));
+        background = frame;
         // 启动时编辑器往往还没显示，算不出代码区矩形；延迟重试几次补上压暗
         if (scrimRect == null && settings.scrim > 0 && scrimRetries < 5) {
             scrimRetries++;
@@ -245,15 +256,34 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         LOG.info("壁纸已应用：" + entry.title + "（" + entry.kind + "，不透明度 " + opacity + "%，虚化 " + settings.blur + "）");
     }
 
-    /** 静态图：优先用壁纸自己的预览图，没有就把图片文件本身读进来。 */
+    /** 静态图：视频项目解真实画面，图片项目用真实图片文件，其余才用预览图。 */
     @Nullable
     private Image loadStill(WallpaperEntry entry) {
-        Path path = entry.preview != null && Files.isRegularFile(entry.preview) ? entry.preview : entry.media;
-        if (path == null || !Files.isRegularFile(path)) return null;
-        String name = path.getFileName().toString().toLowerCase();
-        if (name.endsWith(".mp4") || name.endsWith(".webm") || name.endsWith(".mov") || name.endsWith(".m4v")) {
-            return null;
+        if (VideoFrame.supports(entry.media)) {
+            BufferedImage cached = VideoFrame.cached(entry.media);
+            if (cached != null) return cached;
+            // 4K 视频用 JCodec 解首帧要数秒，放后台做；解码期间先用 preview.jpg 顶着
+            VideoFrame.decodeAsync(entry.media, frame ->
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        if (!disposed) apply();
+                    }));
         }
+
+        // 图片项目同样不能用 preview.jpg：Wallpaper Engine 的预览图是方形居中裁切图，
+        // 铺到宽屏窗口上会被放大再裁一次，看起来就像"图片被裁剪"。
+        if (WallpaperLibrary.isImage(entry.media)) {
+            Image image = readImage(entry.media);
+            if (image != null) return image;
+        }
+        if (entry.preview != null && !entry.preview.equals(entry.media)) {
+            return readImage(entry.preview);
+        }
+        return readImage(entry.media);
+    }
+
+    @Nullable
+    private static Image readImage(@Nullable Path path) {
+        if (path == null || !Files.isRegularFile(path)) return null;
         try {
             return ImageIO.read(path.toFile());
         } catch (IOException err) {
@@ -315,6 +345,30 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         );
     }
 
+    /**
+     * 面板尺寸变化时按新尺寸重渲染画布。画布比例和面板不一致时画面会变形 / 错位，
+     * 启动时面板尺寸未就绪（拿到 0 或小尺寸）也靠这个事件补一次正确的渲染。
+     * 拖动窗口边框会连续触发，300ms 去抖避免反复重绘。
+     */
+    private void ensureResizeHook(FrameBackground.JFrameHolder holder) {
+        if (holder.panel == hookedPanel) return;
+        if (hookedPanel != null && resizeHook != null) {
+            hookedPanel.removeComponentListener(resizeHook);
+        }
+        hookedPanel = holder.panel;
+        resizeHook = new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                if (resizeTimer == null) {
+                    resizeTimer = new javax.swing.Timer(300, ev -> apply());
+                    resizeTimer.setRepeats(false);
+                }
+                resizeTimer.restart();
+            }
+        };
+        hookedPanel.addComponentListener(resizeHook);
+    }
+
     @Nullable
     private WallpaperEntry findEntry(String id) {
         if (id == null) return null;
@@ -347,12 +401,26 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         this.settings = state;
         if (this.settings.imports == null) this.settings.imports = new ArrayList<>();
         if (this.settings.opacity <= 0) this.settings.opacity = DEFAULT_OPACITY;
-        if (this.settings.fps <= 0) this.settings.fps = 10;
         if (this.settings.fit == null || this.settings.fit.isBlank()) this.settings.fit = "contain";
+        // 0.9.8 曾把默认值强制改成「铺满」，这里还原一次；之后用户自己选的保持不变
+        if (!this.settings.fitReverted) {
+            if ("cover".equals(this.settings.fit)) this.settings.fit = "contain";
+            this.settings.fitReverted = true;
+        }
     }
 
     @Override
     public void dispose() {
+        disposed = true;
+        if (resizeTimer != null) {
+            resizeTimer.stop();
+            resizeTimer = null;
+        }
+        if (hookedPanel != null && resizeHook != null) {
+            hookedPanel.removeComponentListener(resizeHook);
+        }
+        resizeHook = null;
+        hookedPanel = null;
         clearBackground();
         server.stop();
     }

@@ -16,12 +16,13 @@
         右侧「壁纸」工具窗口提供实时调节：不透明度、背景虚化、代码区压暗、水平位置、填充方式。<br/><br/>
 
         <b>兼容性</b>：与 Material Theme UI（完整版）冲突，请勿同时启用。<br/>
-        <b>限制</b>：仅支持静态画面，视频 / 场景 / 网页类壁纸取其预览帧。
+        <b>限制</b>：视频 / GIF / 场景 / 网页类壁纸均显示静态画面。
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
 
-    <idea-version since-build="241" until-build="241.*"/>
+    <!-- 223 = 2022.3；不写 until-build 则对之后所有版本开放 -->
+    <idea-version since-build="223"/>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="com.tisako.wallpaper.WallpaperService"/>

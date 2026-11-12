@@ -35,7 +35,8 @@ public final class WallpaperServer {
         public final boolean enabled;
         public final String currentId;
 
-        public Snapshot(WallpaperEntry entry, int opacity, String fit, int blur, int scrim, int posX, boolean enabled, String currentId) {
+        public Snapshot(WallpaperEntry entry, int opacity, String fit, int blur, int scrim, int posX,
+                        boolean enabled, String currentId) {
             this.entry = entry;
             this.opacity = opacity;
             this.fit = fit;
@@ -233,6 +234,16 @@ public final class WallpaperServer {
             .row .val { width: 38px; text-align: right; color: #9ecbff; flex: 0 0 auto; }
             .row select { flex: 1; background: #2a2a33; color: #ddd; border: 1px solid #444;
                           border-radius: 4px; padding: 3px 6px; font: inherit; }
+            .dd { position: relative; flex: 1; }
+            .dd > button { width: 100%; text-align: left; background: #2a2a33; color: #ddd;
+                           border: 1px solid #444; border-radius: 4px; padding: 3px 6px;
+                           font: inherit; cursor: pointer; }
+            .dd .menu { display: none; position: absolute; left: 0; right: 0; top: 100%;
+                        margin-top: 2px; background: #2a2a33; border: 1px solid #444;
+                        border-radius: 4px; z-index: 20; overflow: hidden; }
+            .dd .menu.show { display: block; }
+            .dd .menu div { padding: 4px 8px; cursor: pointer; color: #ddd; }
+            .dd .menu div:hover { background: #3b82f6; color: #fff; }
             .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
                     gap: 8px; padding: 10px; overflow: auto; flex: 1 1 auto;
                     align-items: start; align-content: start; }
@@ -262,11 +273,14 @@ public final class WallpaperServer {
               <div class="row"><label>水平位置</label>
                 <input type="range" id="px" min="0" max="100" step="5"><span class="val" id="pxv"></span></div>
               <div class="row"><label>填充方式</label>
-                <select id="ft">
-                  <option value="contain">适应窗口（完整显示）</option>
-                  <option value="cover">铺满窗口（裁掉边缘）</option>
-                  <option value="stretch">拉伸铺满</option>
-                </select></div>
+                <div class="dd" id="ftdd" data-v="contain">
+                  <button type="button" id="ftbtn">完整显示（适应窗口）<span style="float:right">▾</span></button>
+                  <div class="menu" id="ftmenu">
+                    <div data-v="contain">完整显示（适应窗口）</div>
+                    <div data-v="cover">铺满窗口（裁掉边缘）</div>
+                    <div data-v="stretch">拉伸铺满</div>
+                  </div>
+                </div></div>
             </div>
             <div class="grid" id="grid"></div>
             <script>
@@ -282,7 +296,20 @@ public final class WallpaperServer {
               document.getElementById('scv').textContent = s.scrim + '%';
               document.getElementById('px').value = s.posX;
               document.getElementById('pxv').textContent = s.posX + '%';
-              document.getElementById('ft').value = s.fit || 'contain';
+              setFit(s.fit || 'contain');
+            }
+
+            const FIT_LABEL = {
+              contain: '完整显示（适应窗口）',
+              cover: '铺满窗口（裁掉边缘）',
+              stretch: '拉伸铺满'
+            };
+
+            // 不用原生 select：JCEF 里下拉弹层渲染不出来，只能看到当前项
+            function setFit(v) {
+              document.getElementById('ftdd').dataset.v = v;
+              document.getElementById('ftbtn').innerHTML =
+                (FIT_LABEL[v] || FIT_LABEL.contain) + '<span style="float:right">▾</span>';
             }
 
             async function load(refreshControls) {
@@ -315,7 +342,7 @@ public final class WallpaperServer {
               const bl = document.getElementById('bl').value;
               const sc = document.getElementById('sc').value;
               const px = document.getElementById('px').value;
-              const ft = document.getElementById('ft').value;
+              const ft = document.getElementById('ftdd').dataset.v || 'contain';
               document.getElementById('opv').textContent = op + '%';
               document.getElementById('blv').textContent = bl + 'px';
               document.getElementById('scv').textContent = sc + '%';
@@ -330,7 +357,19 @@ public final class WallpaperServer {
             document.getElementById('bl').oninput = pushSoon;
             document.getElementById('sc').oninput = pushSoon;
             document.getElementById('px').oninput = pushSoon;
-            document.getElementById('ft').onchange = push;
+            document.getElementById('ftbtn').onclick = (e) => {
+              e.stopPropagation();
+              document.getElementById('ftmenu').classList.toggle('show');
+            };
+            document.querySelectorAll('#ftmenu div').forEach(item => {
+              item.onclick = (e) => {
+                e.stopPropagation();
+                setFit(item.dataset.v);
+                document.getElementById('ftmenu').classList.remove('show');
+                push();
+              };
+            });
+            document.addEventListener('click', () => document.getElementById('ftmenu').classList.remove('show'));
             document.getElementById('tg').onclick = async () => { await fetch('/toggle'); load(true); };
             document.getElementById('rf').onclick = async () => { await fetch('/rescan'); load(true); };
             document.getElementById('imp').onclick = async () => {
