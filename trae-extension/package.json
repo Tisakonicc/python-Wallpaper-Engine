@@ -4,7 +4,7 @@
   "description": "把 Steam Wallpaper Engine 的壁纸（视频 / 场景 / 网页）以及本地导入的视频、图片渲染成 IDE 背景。",
   "publisher": "tisakonicc",
   "author": "Tisako",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {

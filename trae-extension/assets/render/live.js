@@ -110,10 +110,18 @@
     return 'cover';
   }
 
+  var lastVisuals = '';
+
   function applyVisuals(next) {
     var opacity = clamp(next.opacity, 0, 1);
     var blur = clamp(next.blur, 0, 40);
     var saturate = clamp(next.saturate, 0, 3);
+    var dark = clamp(next.scrim, 0, 1);
+    var key = opacity + '|' + blur + '|' + saturate + '|' + dark + '|' + next.fit;
+    // 每 1.5 秒轮询一次状态；值没变就不要再写样式，
+    // 否则全屏视频图层会跟着反复重绘，表现为偶发掉帧
+    if (key === lastVisuals) return;
+    lastVisuals = key;
 
     var filters = [];
     if (blur > 0) filters.push('blur(' + blur + 'px)');
@@ -121,7 +129,7 @@
 
     media.style.opacity = String(opacity);
     media.style.filter = filters.length ? filters.join(' ') : 'none';
-    scrim.style.background = 'rgba(0,0,0,' + clamp(next.scrim, 0, 1) + ')';
+    scrim.style.background = 'rgba(0,0,0,' + dark + ')';
     document.documentElement.style.setProperty('--bgcover-fit', fitCss(next.fit));
   }
 
@@ -145,6 +153,7 @@
       }
     }
     current = null;
+    wanted = null;
     media.textContent = '';
     hideHint();
   }
@@ -159,9 +168,14 @@
     );
   }
 
+  /** 上一次同步后的播放意图；状态没变就不再碰播放器，避免每轮轮询都打断解码。 */
+  var wanted = null;
+
   function syncPlayback() {
     if (!current) return;
     var play = shouldPlay();
+    if (wanted === play) return;
+    wanted = play;
 
     if (current.inst) {
       try {
@@ -260,6 +274,7 @@
       video.loop = true;
       video.autoplay = true;
       video.playsInline = true;
+      video.preload = 'auto';
       video.setAttribute('playsinline', '');
       video.setAttribute('disablepictureinpicture', '');
       // 有预览图就当 poster 用：视频第一帧出来之前不会露出一块黑
@@ -273,6 +288,14 @@
       });
       video.addEventListener('error', function () {
         fallback(w);
+      });
+      // 系统休眠、GPU 进程重启等会让媒体管线被打断并自行暂停；
+      // 只要还处于「应该播放」的状态就恢复，避免画面停在某一帧让人以为卡死
+      video.addEventListener('pause', function () {
+        if (current && current.video === video && shouldPlay()) {
+          wanted = false;
+          setTimeout(syncPlayback, 300);
+        }
       });
       media.appendChild(video);
       current.video = video;

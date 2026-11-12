@@ -262,8 +262,10 @@ function buildScript(options) {
     // 每 4 秒做三件事：
     //   1. workbench 重排 body 把 iframe 挤掉 → 重新挂回；
     //   2. 给渲染页发 ping，确认它的文档还活着；
-    //   3. 连续 12 秒没有回话 → 说明 iframe 文档已经死了（切换主题、渲染进程崩溃时都会出现），
+    //   3. 连续 20 秒没有回话 → 说明 iframe 文档已经死了（切换主题、渲染进程崩溃时都会出现），
     //      直接换一个 src 重新加载。只检查 DOM 里还有没有这个元素是发现不了这种故障的。
+    // 阈值从 12 秒放宽到 20 秒：解码 4K 视频时渲染进程偶尔会忙到几十毫秒才回包，
+    // 阈值太窄会把正常的高负载误判成假死，反而触发一次重载、画面跳回开头。
     setInterval(function () {
       if (document.hidden) {
         lastPong = Date.now();
@@ -279,7 +281,7 @@ function buildScript(options) {
       }
       if (!ready) return;
       post({ channel: CHANNEL, type: 'ping' });
-      if (Date.now() - lastPong > 12000) {
+      if (Date.now() - lastPong > 20000) {
         lastPong = Date.now();
         ready = false;
         attempt += 1;

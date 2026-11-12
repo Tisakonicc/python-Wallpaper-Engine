@@ -61,7 +61,9 @@ function serveFile(file, req, res) {
     const headers = {
       'Content-Type': type,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-store',
+      // 视频循环播放会反复请求同一段 Range；用 no-store 时每次循环都要重新读盘，
+      // 大文件在循环点会出现一次可感知的卡顿。本地文件内容不会变，允许缓存。
+      'Cache-Control': 'public, max-age=3600',
       'X-Content-Type-Options': 'nosniff',
       // 壁纸是本地可信资源；网页壁纸内部可能引用同源的贴图/模型文件
       'Access-Control-Allow-Origin': '*',
