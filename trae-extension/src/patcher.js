@@ -14,7 +14,11 @@ const CANDIDATES = [
 ];
 
 const END_TAG = `<!-- ${MARKER}-end -->`;
-const START_RE = new RegExp(`<!-- ${MARKER}-start (\\S+) csp=(\\S+) -->`);
+// 注入脚本的修订号：只有运行时脚本本身发生必须更新 html 的变化时才加 1。
+// 与扩展版本解耦，避免每次升级都重写 workbench.html（Trae 每次启动都会把
+// product.json 的校验项补回来，反复重写只会陷入「提示完全重启」的循环）。
+const RUNTIME_REV = '4';
+const START_RE = new RegExp(`<!-- ${MARKER}-start (\\S+)(?: rev=(\\S+))? csp=(\\S+) -->`);
 
 function findWorkbenchHtml(appRoot) {
   if (!appRoot) return null;
@@ -26,14 +30,18 @@ function findWorkbenchHtml(appRoot) {
 }
 
 function startTag(stamp, cspAdded) {
-  return `<!-- ${MARKER}-start ${stamp} csp=${cspAdded.join('+') || 'none'} -->`;
+  return `<!-- ${MARKER}-start ${stamp} rev=${RUNTIME_REV} csp=${cspAdded.join('+') || 'none'} -->`;
 }
 
 /** 读回上一次注入时真的放宽了哪些 CSP 指令，移除时只还原这些。 */
 function readPatchInfo(html) {
   const m = html.match(START_RE);
   if (!m) return null;
-  return { stamp: m[1], cspAdded: m[2] === 'none' ? [] : m[2].split('+') };
+  return {
+    stamp: m[1],
+    rev: m[2] || '',
+    cspAdded: m[3] === 'none' ? [] : m[3].split('+'),
+  };
 }
 
 function stripBlock(html) {
@@ -51,7 +59,10 @@ function editDirective(html, directive, edit) {
   const body = edit(m[1]);
   if (body === m[1]) return { html, changed: false, missing: false };
   const head = m[0].slice(0, m[0].length - m[1].length);
-  const out = html.slice(0, m.index) + head + body + html.slice(m.index + m[0].length);
+  // edit 函数可能 trim 过 body 首部的 whitespace，导致指令名和值粘在一起
+  // （比如 "frame-src'self'" 被当成一个指令名），必须保证至少有一个空格
+  const sep = (body.length && !/\s/.test(body.charAt(0))) ? ' ' : '';
+  const out = html.slice(0, m.index) + head + sep + body + html.slice(m.index + m[0].length);
   return { html: out, changed: true, missing: false };
 }
 
@@ -66,18 +77,22 @@ function relaxCsp(html) {
   let out = html;
   const added = [];
 
-  let r = editDirective(out, 'script-src', (body) =>
-    body.includes(`'unsafe-inline'`) ? body : ` 'unsafe-inline'` + body
-  );
+  let r = editDirective(out, 'script-src', (body) => {
+    if (body.includes("'unsafe-inline'")) return body;
+    // body 是指令名之后的内容（通常以 whitespace 开头），直接在首部加 'unsafe-inline' 即可
+    return " 'unsafe-inline'" + body;
+  });
   if (r.missing) {
     return { ok: false, reason: 'workbench.html 的 CSP 里没有 script-src，无法注入' };
   }
   out = r.html;
   if (r.changed) added.push('script');
 
-  r = editDirective(out, 'frame-src', (body) =>
-    body.includes('http://127.0.0.1:*') ? body : `${body.trim()} http://127.0.0.1:*`
-  );
+  r = editDirective(out, 'frame-src', (body) => {
+    if (body.includes('http://127.0.0.1:*')) return body;
+    // 保留原有格式：body 通常以 whitespace 开头，直接追加即可
+    return body.replace(/\s*$/, '') + ' http://127.0.0.1:*';
+  });
   if (r.missing) {
     // 没有 frame-src 时浏览器会回落到 default-src，注入无法工作，直接如实报错
     return { ok: false, reason: 'workbench.html 的 CSP 里没有 frame-src，无法加载渲染页' };
@@ -91,7 +106,7 @@ function relaxCsp(html) {
 function revertCsp(html, cspAdded) {
   let out = html;
   if (cspAdded.includes('script')) {
-    out = editDirective(out, 'script-src', (body) => body.replace(' \'unsafe-inline\'', '')).html;
+    out = editDirective(out, 'script-src', (body) => body.replace(/\s+'unsafe-inline'/g, '')).html;
   }
   if (cspAdded.includes('frame')) {
     out = editDirective(out, 'frame-src', (body) => body.replace(/\s+http:\/\/127\.0\.0\.1:\*/g, '')).html;
@@ -325,6 +340,17 @@ function apply(appRoot, script, stamp) {
   }
 
   const previous = readPatchInfo(html);
+
+  // 第一次注入：只摘掉校验项，本次会话先不改 html。
+  // 主进程在启动时就把 product.json 的校验清单读进了内存，本次会话里改 html
+  // 必然对不上，启动约半分钟后 IDE 一定会弹一次“安装似乎损坏”。
+  // 拆成“先摘校验项 → 完全重启 → 再写 html”两步，这条提示就永远不会出现。
+  if (!previous) {
+    const detached = detachChecksum(appRoot, target);
+    if (!detached.ok) return { ok: false, reason: detached.reason };
+    if (detached.state === 'detached') return { ok: true, staged: true, target };
+  }
+
   const clean = revertCsp(stripBlock(html), previous ? previous.cspAdded : []);
 
   const relaxed = relaxCsp(clean);
@@ -372,6 +398,11 @@ function remove(appRoot) {
       if (!result.ok) return { ok: false, reason: result.reason };
       const bak = backupPath(target, info.stamp);
       if (fs.existsSync(bak)) fs.unlinkSync(bak);
+    } else {
+      // 只走过第一步（摘校验项）、还没写入注入块：文件本身没动过，
+      // 把校验项按原内容补回去，恢复成完整的“未修改”状态。
+      const attached = attachChecksum(appRoot, target, html);
+      if (!attached.ok) return { ok: false, reason: attached.reason };
     }
   } catch (err) {
     return { ok: false, reason: `还原失败：${err.message}${permissionHint(err)}` };
@@ -379,16 +410,166 @@ function remove(appRoot) {
   return { ok: true, target };
 }
 
-/** workbench.html 里只有当前构建（版本 + 端口）的注入块才算已注入。 */
-function isPatched(appRoot, stamp) {
+/**
+ * 当前扩展是否处于「已卸载、等待删除」状态。
+ *
+ * 卸载（以及升级替换旧版本）时，IDE 会往 <extensions>/.obsolete 写一条
+ * `"<publisher>.<name>-<version>": true`，真正的目录删除发生在下一次启动。
+ * 禁用扩展、正常退出、重载窗口都不会写这个标记，所以它能精确区分「卸载」。
+ *
+ * @param {string} extensionPath 正在运行的扩展目录（context.extensionPath）
+ * @returns {boolean}
+ */
+function isUninstallPending(extensionPath) {
+  if (!extensionPath) return false;
+  const dir = path.dirname(extensionPath);
+  const name = path.basename(extensionPath);
+  const file = path.join(dir, '.obsolete');
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    // 文件不存在 / 解析失败：按「不是卸载」处理，宁可少清理也不要误还原
+    return false;
+  }
+  if (!data || typeof data !== 'object') return false;
+
+  const isMarked = (key) =>
+    Object.keys(data).some((k) => k.toLowerCase() === key.toLowerCase() && !!data[k]);
+  if (!isMarked(name)) return false;
+
+  // 升级时 IDE 也会把旧版本目录标成 obsolete，但同时已经装好了新版本目录。
+  // 只要还有同名、未被标记的版本目录在，就是升级而不是卸载：不要还原注入，
+  // 否则每次升级都要重新走一遍“完全重启 + 重载窗口”。
+  const prefix = name.replace(/-\d+\.\d+\.\d+.*$/, '');
+  try {
+    const siblings = fs.readdirSync(dir);
+    for (const sibling of siblings) {
+      if (sibling === name) continue;
+      if (!sibling.startsWith(`${prefix}-`)) continue;
+      if (!isMarked(sibling)) return false;
+    }
+  } catch {
+    // 目录读不了就按卸载处理，保持原来的行为
+  }
+  return true;
+}
+
+/**
+ * workbench.html 里有我们「当前修订号」的注入块才算已注入。
+ *
+ * 渲染页脚本（live.js）由本地服务按需下发，扩展升级后页面拿到的就是新脚本，
+ * 不需要改写 workbench.html。只有注入脚本本身需要更新时才把 RUNTIME_REV 加 1，
+ * 触发一次重写；这样普通升级不会再改写 html，也就不会反复提示重启。
+ */
+function isPatched(appRoot) {
   const target = findWorkbenchHtml(appRoot);
   if (!target) return false;
   try {
     const info = readPatchInfo(fs.readFileSync(target, 'utf8'));
-    return !!info && info.stamp === safeStamp(stamp);
+    return !!info && info.rev === RUNTIME_REV;
   } catch {
     return false;
   }
 }
 
-module.exports = { apply, remove, isPatched, verifyChecksum, findWorkbenchHtml, MARKER };
+/**
+ * VS Code 给主窗口写死了 `autoplayPolicy: "user-gesture-required"`，
+ * 背景 iframe 为了不挡编辑器点击是 pointer-events: none，永远拿不到用户手势，
+ * 于是带音轨的壁纸会被自动播放策略拒绝，只能静音兜底。
+ * Trae 用的是 `no-user-gesture-required`，所以同一个壁纸在 Trae 有声、VS Code 无声。
+ *
+ * 这里只改主窗口那一处（和 enableBlinkFeatures:"HighlightAPI" 相邻的唯一匹配），
+ * 不碰其它窗口/离屏页面的策略。mainImpl.js 目前不在 product.json 校验清单里；
+ * 万一将来被纳入，这里按和 workbench.html 相同的方式摘掉校验项。
+ */
+const AUTOPLAY_ON = 'autoplayPolicy:"user-gesture-required",enableBlinkFeatures:"HighlightAPI"';
+const AUTOPLAY_OFF = 'autoplayPolicy:"no-user-gesture-required",enableBlinkFeatures:"HighlightAPI"';
+
+function findMainWindowFile(appRoot) {
+  if (!appRoot) return null;
+  for (const rel of ['out/mainImpl.js', 'out/main.js']) {
+    const file = path.join(appRoot, rel);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
+function applyAutoplayPolicy(appRoot) {
+  const target = findMainWindowFile(appRoot);
+  if (!target) return { ok: true, state: 'skipped', reason: '找不到主进程入口' };
+
+  let text;
+  try {
+    text = fs.readFileSync(target, 'utf8');
+  } catch (err) {
+    return { ok: false, reason: `读取 ${target} 失败：${err.message}${permissionHint(err)}` };
+  }
+
+  if (text.includes(AUTOPLAY_OFF)) return { ok: true, state: 'already', target };
+
+  const count = text.split(AUTOPLAY_ON).length - 1;
+  if (count !== 1) {
+    return {
+      ok: true,
+      state: 'skipped',
+      reason: `主窗口自动播放策略匹配到 ${count} 处，跳过`,
+      target,
+    };
+  }
+
+  const detached = detachChecksum(appRoot, target);
+  if (!detached.ok) return { ok: false, reason: detached.reason };
+
+  try {
+    writeAtomic(target, text.replace(AUTOPLAY_ON, AUTOPLAY_OFF));
+  } catch (err) {
+    return { ok: false, reason: `写入 ${target} 失败：${err.message}${permissionHint(err)}` };
+  }
+  return { ok: true, state: 'patched', target };
+}
+
+function restoreAutoplayPolicy(appRoot) {
+  const target = findMainWindowFile(appRoot);
+  if (!target) return { ok: true, state: 'skipped' };
+
+  let text;
+  try {
+    text = fs.readFileSync(target, 'utf8');
+  } catch (err) {
+    return { ok: false, reason: `读取 ${target} 失败：${err.message}${permissionHint(err)}` };
+  }
+  if (!text.includes(AUTOPLAY_OFF)) return { ok: true, state: 'absent', target };
+
+  const next = text.replace(AUTOPLAY_OFF, AUTOPLAY_ON);
+  const read = readProduct(appRoot);
+  const keys =
+    read.ok && read.product && read.product.checksums
+      ? candidateKeys(appRoot, target).filter((key) =>
+          Object.prototype.hasOwnProperty.call(read.product.checksums, key)
+        )
+      : [];
+  if (keys.length) {
+    const attached = attachChecksum(appRoot, target, next);
+    if (!attached.ok) return { ok: false, reason: attached.reason };
+  }
+
+  try {
+    writeAtomic(target, next);
+  } catch (err) {
+    return { ok: false, reason: `写入 ${target} 失败：${err.message}${permissionHint(err)}` };
+  }
+  return { ok: true, state: 'restored', target };
+}
+
+module.exports = {
+  apply,
+  remove,
+  isPatched,
+  isUninstallPending,
+  verifyChecksum,
+  findWorkbenchHtml,
+  applyAutoplayPolicy,
+  restoreAutoplayPolicy,
+  MARKER,
+};

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="250" viewBox="0 0 920 250" font-family="Microsoft YaHei, Segoe UI, PingFang SC, sans-serif">
+  <rect width="920" height="250" fill="#0d1117"/>
+  <text x="36" y="44" fill="#e6edf3" font-size="20" font-weight="600">面板底部：视频解码状态徽章</text>
+  <text x="36" y="70" fill="#8b98a9" font-size="12">实测结果，不是按 IDE 猜测；软解时自动回退 720p 代理</text>
+
+  <!-- checking -->
+  <rect x="36" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#2b3445"/>
+  <circle cx="72" cy="132" r="7" fill="#8b98a9">
+    <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="90" y="138" fill="#c9d1d9" font-size="15" font-weight="600">检测中</text>
+  <text x="60" y="168" fill="#8b98a9" font-size="12">WebCodecs 实测解码一帧</text>
+  <text x="60" y="188" fill="#8b98a9" font-size="12">10 秒超时兜底，不会一直闪</text>
+
+  <!-- hardware -->
+  <rect x="327" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#35c08b"/>
+  <circle cx="363" cy="132" r="7" fill="#35c08b"/>
+  <text x="381" y="138" fill="#e6edf3" font-size="15" font-weight="600">硬解</text>
+  <text x="351" y="168" fill="#8b98a9" font-size="12">直接播放原片，不生成代理</text>
+  <text x="351" y="188" fill="#8b98a9" font-size="12">画质与帧率都保持原样</text>
+
+  <!-- software -->
+  <rect x="618" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#e0a33e"/>
+  <circle cx="654" cy="132" r="7" fill="#e0a33e"/>
+  <text x="672" y="138" fill="#e6edf3" font-size="15" font-weight="600">软解</text>
+  <text x="642" y="168" fill="#8b98a9" font-size="12">自动回退 720p 代理，降卡顿</text>
+  <text x="642" y="188" fill="#8b98a9" font-size="12">悬停可看探测失败原因</text>
+</svg>

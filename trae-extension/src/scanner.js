@@ -165,16 +165,70 @@ function detectKind(dir, project, declaredFile) {
   return null;
 }
 
+// 属性键名里出现这些词，基本可以确定是“选音乐”的下拉框。
+const MUSIC_KEY_RE = /(^|[_\-.])(music|bgm|song|track|soundtrack|playlist)($|[_\-.0-9])/i;
+// 属性显示名里出现这些词（中英文），用来兜底识别命名不规范的 combo。
+const MUSIC_TEXT_RE = /(音乐|配乐|曲目|背景乐|bgm|music|soundtrack)/i;
+
+/**
+ * 从 project.json 里提取“音乐”下拉框：属性名和选项一起返回。
+ *
+ * Wallpaper Engine 里并没有强制的属性名，实际遇到过这些写法：
+ *   - scenes 常见：general.properties.music（combo）
+ *   - 网页壁纸可能是：bgmTrack、songList、track…
+ * 所以按 key → 显示文字 的顺序挑第一个像音乐的 combo，
+ * 只认 combo 类型且带 options 的，避免把 bool / slider 误当成音乐。
+ */
+function extractMusicOptions(project) {
+  const props = project && project.general && project.general.properties;
+  if (!props || typeof props !== 'object') return null;
+
+  const combos = [];
+  for (const [key, prop] of Object.entries(props)) {
+    if (!prop || typeof prop !== 'object') continue;
+    if (String(prop.type || '').toLowerCase() !== 'combo') continue;
+    if (!Array.isArray(prop.options) || !prop.options.length) continue;
+    combos.push({ key, prop });
+  }
+  if (!combos.length) return null;
+
+  // 优先精确同名 music，再按 key 关键词，最后按显示文字关键词
+  const picked =
+    combos.find((c) => c.key.toLowerCase() === 'music') ||
+    combos.find((c) => MUSIC_KEY_RE.test(c.key)) ||
+    combos.find((c) => MUSIC_TEXT_RE.test(String(c.prop.text || '')));
+  if (!picked) return null;
+
+  const list = [];
+  for (const opt of picked.prop.options) {
+    if (!opt || typeof opt !== 'object') continue;
+    const value = opt.value == null ? '' : String(opt.value);
+    const label = opt.label == null ? value : String(opt.label);
+    list.push({ value, label });
+  }
+  if (!list.length) return null;
+
+  return { key: picked.key, options: list };
+}
+
 function buildItem(dir, id, origin) {
   const project = readJson(path.join(dir, 'project.json'));
   let declaredFile = project && typeof project.file === 'string' ? project.file : '';
-  if (!declaredFile) {
+  const declaredExists = declaredFile && fs.existsSync(path.join(dir, declaredFile));
+  if (!declaredExists) {
+    // project.json 里写的 file 不存在时 fallback 到实际存在的入口文件
     if (fs.existsSync(path.join(dir, 'index.html'))) declaredFile = 'index.html';
     else if (fs.existsSync(path.join(dir, 'scene.pkg'))) declaredFile = 'scene.pkg';
+    else if (fs.existsSync(path.join(dir, 'scene.json'))) declaredFile = 'scene.json';
+    else if (fs.existsSync(path.join(dir, 'loop.mp4'))) declaredFile = 'loop.mp4';
+    else if (fs.existsSync(path.join(dir, 'preview.webm'))) declaredFile = 'preview.webm';
+    else if (!declaredFile) declaredFile = '';
   }
 
   const kind = detectKind(dir, project, declaredFile);
   if (!kind) return null;
+
+  const music = extractMusicOptions(project);
 
   return {
     id: String(id),
@@ -184,6 +238,9 @@ function buildItem(dir, id, origin) {
     preview: previewOf(dir, project),
     file: declaredFile,
     description: String((project && project.description) || '').replace(/\s+/g, ' ').trim(),
+    // 音乐下拉框：key 是 project.json 里的属性名（可能是 music / bgmTrack 等）
+    musicKey: music ? music.key : '',
+    musicOptions: music ? music.options : null,
     origin,
   };
 }

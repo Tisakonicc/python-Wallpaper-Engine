@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" font-family="Microsoft YaHei, Segoe UI, PingFang SC, sans-serif">
+  <rect width="1200" height="520" fill="#0d1117"/>
+  <text x="40" y="46" fill="#e6edf3" font-size="24" font-weight="600">Background-Wallpaper-Engine 工作原理</text>
+  <text x="40" y="72" fill="#8b98a9" font-size="13">全部在本机完成：IDE 只读取，本地服务只监听 127.0.0.1</text>
+
+  <!-- Trae / VS Code -->
+  <g>
+    <rect x="40" y="100" width="300" height="196" rx="12" fill="#161b25" stroke="#2b3445"/>
+    <text x="64" y="132" fill="#4f8cff" font-size="15" font-weight="600">Trae CN / VS Code</text>
+    <text x="64" y="162" fill="#c9d1d9" font-size="13">workbench.html 注入背景层</text>
+    <text x="64" y="188" fill="#c9d1d9" font-size="13">透明 iframe，不吃编辑器点击</text>
+    <text x="64" y="214" fill="#c9d1d9" font-size="13">状态栏「壁纸」面板</text>
+    <text x="64" y="240" fill="#c9d1d9" font-size="13">硬解 / 软解状态徽章</text>
+    <text x="64" y="272" fill="#8b98a9" font-size="12">「移除注入」逐字节还原</text>
+  </g>
+
+  <!-- arrow 1 -->
+  <g stroke="#4f8cff" stroke-width="2" fill="none">
+    <path d="M344 198 H404"/>
+    <path d="M396 191 L404 198 L396 205"/>
+  </g>
+  <text x="350" y="185" fill="#8b98a9" font-size="11">localhost</text>
+
+  <!-- service -->
+  <g>
+    <rect x="410" y="100" width="340" height="196" rx="12" fill="#161b25" stroke="#4f8cff"/>
+    <text x="434" y="132" fill="#4f8cff" font-size="15" font-weight="600">本地服务 · 127.0.0.1:32123–32128</text>
+    <text x="434" y="162" fill="#c9d1d9" font-size="13">/state.json 当前壁纸与外观</text>
+    <text x="434" y="188" fill="#c9d1d9" font-size="13">320px 封面缩略图（ffmpeg）</text>
+    <text x="434" y="214" fill="#c9d1d9" font-size="13">视频代理 / 音轨抽离 / 硬解探测</text>
+    <text x="434" y="240" fill="#c9d1d9" font-size="13">.mpkg 解包与 scene.pkg 转换</text>
+    <text x="434" y="272" fill="#8b98a9" font-size="12">端口按 IDE 隔离，多窗口共用</text>
+  </g>
+
+  <!-- arrow 2 -->
+  <g stroke="#4f8cff" stroke-width="2" fill="none">
+    <path d="M754 198 H814"/>
+    <path d="M806 191 L814 198 L806 205"/>
+  </g>
+  <text x="756" y="185" fill="#8b98a9" font-size="11">只读</text>
+
+  <!-- sources -->
+  <g>
+    <rect x="820" y="100" width="340" height="196" rx="12" fill="#161b25" stroke="#2b3445"/>
+    <text x="844" y="132" fill="#35c08b" font-size="15" font-weight="600">壁纸来源</text>
+    <text x="844" y="162" fill="#c9d1d9" font-size="13">Steam 库：视频 / 场景 / 网页</text>
+    <text x="844" y="188" fill="#c9d1d9" font-size="13">本地导入：视频 / 动图 / 图片</text>
+    <text x="844" y="214" fill="#c9d1d9" font-size="13">.mpkg（LZ4 + ETC2）/ .pkg</text>
+    <text x="844" y="240" fill="#c9d1d9" font-size="13">含 index.html 的文件夹</text>
+    <text x="844" y="272" fill="#8b98a9" font-size="12">不修改、不复制、不删除源文件</text>
+  </g>
+
+  <!-- PyCharm -->
+  <g>
+    <rect x="40" y="340" width="710" height="136" rx="12" fill="#161b25" stroke="#e0a33e"/>
+    <text x="64" y="372" fill="#e0a33e" font-size="15" font-weight="600">PyCharm 插件（另一条实现路线）</text>
+    <text x="64" y="402" fill="#c9d1d9" font-size="13">复用平台背景图 API（IdeBackgroundUtil，反射调用），不修改 IDE 文件，禁用即完全还原</text>
+    <text x="64" y="428" fill="#c9d1d9" font-size="13">静态模式：视频 / 场景 / 网页统一显示首帧；背景音乐用 JCodec 解码 AAC / MP3</text>
+    <text x="64" y="454" fill="#c9d1d9" font-size="13">实验动态：ffmpeg 预抽帧 → D:\WallpaperEngineFrames → 自建 Painter 以 10fps 轮播</text>
+  </g>
+
+  <!-- privacy note -->
+  <g>
+    <rect x="774" y="340" width="386" height="136" rx="12" fill="#101822" stroke="#2b3445"/>
+    <text x="798" y="372" fill="#35c08b" font-size="15" font-weight="600">隐私与安全</text>
+    <text x="798" y="402" fill="#c9d1d9" font-size="13">只监听 127.0.0.1，不对公网开放</text>
+    <text x="798" y="428" fill="#c9d1d9" font-size="13">不联网、不上传、不收集任何数据</text>
+    <text x="798" y="454" fill="#c9d1d9" font-size="13">转换缓存：D:\TraeData\Background-Wallpaper-Engine</text>
+  </g>
+</svg>

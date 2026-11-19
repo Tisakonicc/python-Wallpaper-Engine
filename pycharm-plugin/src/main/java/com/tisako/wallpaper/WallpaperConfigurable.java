@@ -40,9 +40,12 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
     private final List<String> imports = new ArrayList<>();
 
     private JCheckBox enabled;
+    private JCheckBox musicEnabled;
+    private JCheckBox animationEnabled;
     private JComboBox<WallpaperEntry> wallpaper;
     private JSpinner opacity;
     private JSpinner blur;
+    private JSpinner musicVolume;
     private JComboBox<String> fit;
     private JBLabel status;
     private JPanel panel;
@@ -64,12 +67,16 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         service.rescan();
 
         enabled = new JCheckBox("启用编辑器背景壁纸", service.settings().enabled);
+        musicEnabled = new JCheckBox("播放视频壁纸自带的音乐", service.settings().musicEnabled);
+        animationEnabled = new JCheckBox("实验：动态背景（10fps，需 ffmpeg）", service.settings().animationEnabled);
         wallpaper = new JComboBox<>(service.entries().toArray(new WallpaperEntry[0]));
         wallpaper.setPrototypeDisplayValue(new WallpaperEntry("", "占位占位占位占位占位", "video", null, null, false));
         selectCurrent();
 
         opacity = new JSpinner(new SpinnerNumberModel(service.settings().opacity, 10, 100, 5));
         blur = new JSpinner(new SpinnerNumberModel(Math.max(0, service.settings().blur), 0, 60, 2));
+        musicVolume = new JSpinner(new SpinnerNumberModel(
+                Math.max(0, Math.min(100, service.settings().musicVolume)), 0, 100, 5));
         fit = new JComboBox<>(FIT_LABELS);
         fit.setSelectedIndex(fitIndex(service.settings().fit));
 
@@ -96,6 +103,9 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
                 .addLabeledComponent("填充方式", fit, 1, false)
                 .addLabeledComponent("不透明度", opacity, 1, false)
                 .addLabeledComponent("背景虚化（像素）", blur, 1, false)
+                .addComponent(musicEnabled)
+                .addLabeledComponent("音乐音量", musicVolume, 1, false)
+                .addComponent(animationEnabled)
                 .addComponent(buttons)
                 .addComponent(status)
                 .addComponentFillVertically(new JPanel(), 0)
@@ -155,15 +165,19 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         int count = service.entries().size();
         status.setText(count == 0
                 ? "没有找到壁纸：请确认 Steam 已安装 Wallpaper Engine 并订阅了壁纸，或点上面的导入按钮。"
-                : "共 " + count + " 个壁纸（含导入 " + imports.size() + " 个）。场景 / 网页 / 动图壁纸当前显示首帧。");
+                : "共 " + count + " 个壁纸（含导入 " + imports.size()
+                + " 个）。动态背景为实验功能，仅视频类且需要 ffmpeg；场景 / 网页壁纸仍显示首帧。");
     }
 
     @Override
     public boolean isModified() {
         WallpaperService.Settings current = service.settings();
         return enabled.isSelected() != current.enabled
+                || musicEnabled.isSelected() != current.musicEnabled
+                || animationEnabled.isSelected() != current.animationEnabled
                 || opacity.getValue().equals(current.opacity) == false
                 || blur.getValue().equals(current.blur) == false
+                || musicVolume.getValue().equals(current.musicVolume) == false
                 || !FIT_VALUES[fit.getSelectedIndex()].equals(current.fit)
                 || (wallpaper.getSelectedItem() instanceof WallpaperEntry entry && !entry.id.equals(current.wallpaperId))
                 || !imports.equals(current.imports == null ? List.of() : current.imports);
@@ -175,6 +189,9 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         current.enabled = enabled.isSelected();
         current.opacity = (Integer) opacity.getValue();
         current.blur = (Integer) blur.getValue();
+        current.musicEnabled = musicEnabled.isSelected();
+        current.musicVolume = (Integer) musicVolume.getValue();
+        current.animationEnabled = animationEnabled.isSelected();
         current.fit = FIT_VALUES[fit.getSelectedIndex()];
         if (wallpaper.getSelectedItem() instanceof WallpaperEntry entry) current.wallpaperId = entry.id;
         current.imports = new ArrayList<>(imports);
@@ -186,8 +203,11 @@ public final class WallpaperConfigurable implements SearchableConfigurable {
         imports.clear();
         if (service.settings().imports != null) imports.addAll(service.settings().imports);
         enabled.setSelected(service.settings().enabled);
+        musicEnabled.setSelected(service.settings().musicEnabled);
+        animationEnabled.setSelected(service.settings().animationEnabled);
         opacity.setValue(service.settings().opacity);
         blur.setValue(Math.max(0, service.settings().blur));
+        musicVolume.setValue(Math.max(0, Math.min(100, service.settings().musicVolume)));
         fit.setSelectedIndex(fitIndex(service.settings().fit));
         refillWallpaperCombo();
         updateStatus();

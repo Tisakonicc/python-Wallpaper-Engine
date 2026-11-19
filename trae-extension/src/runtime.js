@@ -71,6 +71,22 @@ html.backgroundcover-on .monaco-workbench .part.sidebar iframe {
   background-color: transparent !important;
 }
 
+/* 阅读底衬：侧栏 / 辅助栏（聊天）/ 底部面板加一层主题色半透明底，
+   文字就不用直接压在壁纸的高光上。0 = 完全透明，1 = 完全遮住壁纸。 */
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel),
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel) > .content,
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel) .composite,
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel) .monaco-pane-view,
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel) .monaco-pane-view .pane,
+html.backgroundcover-on .monaco-workbench :is(.part.sidebar, .part.auxiliarybar, .part.panel) .monaco-pane-view .pane > .pane-header,
+html.backgroundcover-on .monaco-workbench .part.panel .terminal-wrapper {
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-sideBar-background, #1e1e1e) calc(var(--bgcover-surface, 0) * 100%),
+    transparent
+  ) !important;
+}
+
 /* 新版浮动面板布局：pane 的底色在更高优先级上带 !important，需要同权重压过 */
 html.backgroundcover-on .monaco-workbench.floating-panels > .monaco-grid-view,
 html.backgroundcover-on .monaco-workbench.modern-ui :is(.part.sidebar, .part.auxiliarybar, .part.panel) .monaco-pane-view .pane,
@@ -82,6 +98,155 @@ html.backgroundcover-on .monaco-workbench.modern-ui .part.editor .title.tabs > .
 /* 空编辑器上的 VS Code/IDE 水印在壁纸上会像杂质，直接隐藏 */
 html.backgroundcover-on .monaco-workbench .editor-group-watermark .letterpress {
   display: none !important;
+}
+
+/* 文字增强：壁纸在背后时把前景色推向纯黑 / 纯白，并给字形加同色系阴影。
+   只改前景变量，不动语法高亮的 token 颜色，避免整套配色错乱。
+   明暗由渲染页上报的 themeKind 决定（backgroundcover-dark / -light），
+   不依赖 body 上是否有 vs-dark / vs-light：新版 VS Code 的 DOM 层级和类名
+   与早期不同，按 body 类名匹配会让文字增强完全不生效。
+   变量写在 html 上，任何使用 var(--vscode-*) 的组件都会继承到。
+   文字增强只改前景色与字形阴影，不自动加底衬；侧栏/面板的底衬强度
+   完全由「底衬强度」滑块控制（默认 0 = 纯壁纸），需要时自行调高。 */
+html.backgroundcover-on.backgroundcover-text.backgroundcover-dark,
+html.backgroundcover-on.backgroundcover-text.backgroundcover-dark .monaco-workbench {
+  --vscode-foreground: #ffffff;
+  --vscode-descriptionForeground: #dcdcdc;
+  --vscode-editor-foreground: #f2f2f2;
+  --vscode-sideBar-foreground: #f5f5f5;
+  --vscode-sideBarSectionHeader-foreground: #ffffff;
+  --vscode-activityBar-foreground: #ffffff;
+  --vscode-activityBar-inactiveForeground: #d0d0d0;
+  --vscode-titleBar-activeForeground: #ffffff;
+  --vscode-titleBar-inactiveForeground: #d0d0d0;
+  --vscode-tab-activeForeground: #ffffff;
+  --vscode-tab-inactiveForeground: #c8c8c8;
+  --vscode-panelTitle-activeForeground: #ffffff;
+  --vscode-panelTitle-inactiveForeground: #cfcfcf;
+  --vscode-menu-foreground: #ffffff;
+  --vscode-input-foreground: #ffffff;
+  --vscode-terminal-foreground: #f2f2f2;
+  --vscode-statusBar-foreground: #ffffff;
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-list-inactiveSelectionForeground: #ffffff;
+  --vscode-breadcrumb-foreground: #dcdcdc;
+}
+
+html.backgroundcover-on.backgroundcover-text.backgroundcover-light,
+html.backgroundcover-on.backgroundcover-text.backgroundcover-light .monaco-workbench {
+  --vscode-foreground: #0b0b0b;
+  --vscode-descriptionForeground: #2b2b2b;
+  --vscode-editor-foreground: #111111;
+  --vscode-sideBar-foreground: #111111;
+  --vscode-sideBarSectionHeader-foreground: #000000;
+  --vscode-activityBar-foreground: #111111;
+  --vscode-activityBar-inactiveForeground: #3a3a3a;
+  --vscode-titleBar-activeForeground: #111111;
+  --vscode-titleBar-inactiveForeground: #3a3a3a;
+  --vscode-tab-activeForeground: #111111;
+  --vscode-tab-inactiveForeground: #3a3a3a;
+  --vscode-panelTitle-activeForeground: #111111;
+  --vscode-panelTitle-inactiveForeground: #3a3a3a;
+  --vscode-menu-foreground: #111111;
+  --vscode-input-foreground: #111111;
+  --vscode-terminal-foreground: #111111;
+  --vscode-statusBar-foreground: #111111;
+  --vscode-list-activeSelectionForeground: #111111;
+  --vscode-list-inactiveSelectionForeground: #111111;
+  --vscode-breadcrumb-foreground: #2b2b2b;
+}
+
+/* 前景文字强制推向纯白/纯黑（!important 绕过主题可能的内联覆盖）。
+   注意：不碰 .monaco-editor .view-lines 的 color，只给它加阴影，避免破坏语法高亮 token。 */
+html.backgroundcover-on.backgroundcover-text.backgroundcover-dark .monaco-workbench :is(
+  .monaco-list-row,
+  .monaco-list-row .label,
+  .monaco-list-row .label-name,
+  .monaco-tl-contents,
+  .explorer-folders-view,
+  .outline-tree,
+  .pane-header,
+  .pane-header .title,
+  .tabs-container,
+  .tab,
+  .statusbar,
+  .statusbar-item,
+  .breadcrumbs,
+  .breadcrumb-item
+) {
+  color: #ffffff !important;
+}
+
+html.backgroundcover-on.backgroundcover-text.backgroundcover-dark .monaco-workbench :is(
+  .monaco-editor .view-lines,
+  .monaco-list-row,
+  .pane-header,
+  .tabs-container,
+  .statusbar,
+  .breadcrumbs,
+  .terminal-wrapper
+) {
+  text-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.95),
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 0 7px rgba(0, 0, 0, 0.7),
+    0 0 12px rgba(0, 0, 0, 0.45);
+}
+
+/* 非代码区文字加细描边：字形边缘在壁纸的高光/暗部都能立住 */
+html.backgroundcover-on.backgroundcover-text.backgroundcover-dark .monaco-workbench :is(
+  .monaco-list-row,
+  .pane-header,
+  .tabs-container,
+  .statusbar,
+  .breadcrumbs
+) {
+  -webkit-text-stroke: 0.3px rgba(0, 0, 0, 0.35);
+}
+
+html.backgroundcover-on.backgroundcover-text.backgroundcover-light .monaco-workbench :is(
+  .monaco-list-row,
+  .monaco-list-row .label,
+  .monaco-list-row .label-name,
+  .monaco-tl-contents,
+  .explorer-folders-view,
+  .outline-tree,
+  .pane-header,
+  .pane-header .title,
+  .tabs-container,
+  .tab,
+  .statusbar,
+  .statusbar-item,
+  .breadcrumbs,
+  .breadcrumb-item
+) {
+  color: #000000 !important;
+}
+
+html.backgroundcover-on.backgroundcover-text.backgroundcover-light .monaco-workbench :is(
+  .monaco-editor .view-lines,
+  .monaco-list-row,
+  .pane-header,
+  .tabs-container,
+  .statusbar,
+  .breadcrumbs,
+  .terminal-wrapper
+) {
+  text-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.95),
+    0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 7px rgba(255, 255, 255, 0.7),
+    0 0 12px rgba(255, 255, 255, 0.45);
+}
+
+html.backgroundcover-on.backgroundcover-text.backgroundcover-light .monaco-workbench :is(
+  .monaco-list-row,
+  .pane-header,
+  .tabs-container,
+  .statusbar,
+  .breadcrumbs
+) {
+  -webkit-text-stroke: 0.3px rgba(255, 255, 255, 0.4);
 }
 
 /* 浮层必须保持不透明，否则悬停提示/补全在动态画面上无法阅读 */
@@ -98,13 +263,14 @@ html.backgroundcover-on .monaco-workbench .editor-widget.find-widget {
 `.trim();
 
 /**
- * @param {{ports: number[], version: string}} options
+ * @param {{ports: number[], version: string, app?: string}} options
  * @returns {string} 可以直接放进 <script> 的脚本文本
  */
 function buildScript(options) {
   const payload = JSON.stringify({
     ports: options.ports,
     version: options.version,
+    app: options.app || '',
     css: CSS,
   }).replace(/</g, '\\u003c');
 
@@ -136,18 +302,128 @@ function buildScript(options) {
     var MAX_ATTEMPTS = 40;   // 约 70 秒：扩展宿主（本地服务）可能比窗口晚很多才起来
     var ready = false;
     var activePort = 0;
-    var retryTimer = null;
+    // 同一端口连续加载失败（load 了但没有 boot）的次数：
+    // 常见原因是窗口先于扩展宿主加载完、服务还没开始监听，直接换端口反而绕远路。
+    var quickFails = 0;
 
-    // 本地服务可能在 32123 / 32124 / 32125 中的任意一个端口上，
-    // 注入脚本不在编译期绑定端口，而是轮询候选端口直到打通。
-    function currentPort() {
-      var ports = CFG.ports && CFG.ports.length ? CFG.ports : [32123];
-      return ports[attempt % ports.length];
+    // 本地服务可能在 32123 / 32124 … 中的任意一个端口上，注入脚本不在编译期绑定端口。
+    // 同时开着 Trae 和 VS Code 时两边都会抢 32123，直接按顺序连会连到对方的服务上，
+    // 渲染页于是去读对方的 /state.json（换壁纸没反应、画面停住）。
+    // workbench 的 CSP 不允许 fetch 到 127.0.0.1（connect-src 只有 'self' https: ws:），
+    // 没法先探活，所以改成：请求带上本 IDE 的 app 标识，对方的服务直接回 404；
+    // 页面加载后收不到 state 就换下一个候选端口。
+    var ports = CFG.ports && CFG.ports.length ? CFG.ports : [32123];
+    // 记住上一次真正连通的端口：同一个 IDE 下次打开窗口直接先连它，
+    // 不用每次都从候选列表第一个开始试（另一个 IDE 可能正占着那个端口）。
+    // 存在 workbench 页面的 localStorage 里，不需要改写注入脚本。
+    var PORT_KEY = 'backgroundcover.port';
+    try {
+      var savedPort = Number(window.localStorage.getItem(PORT_KEY));
+      if (savedPort && ports.indexOf(savedPort) >= 0) {
+        ports = [savedPort].concat(
+          ports.filter(function (port) { return port !== savedPort; })
+        );
+      }
+    } catch (err) {
+      // localStorage 不可用时忽略，按原顺序探测
+    }
+    var portIndex = 0;
+    var verifyTimer = null;
+    // 900ms 太短：扩展宿主（本地服务）忙的时候，上一次导航还没提交就被下一次 src
+    // 覆盖，渲染页始终来不及执行，表现为背景一直不出现。留够时间让文档真正跑起来。
+    var VERIFY_MS = 4000;
+
+    function targetPort() {
+      return ports[portIndex % ports.length];
     }
 
-    function frameUrl() {
-      return 'http://127.0.0.1:' + currentPort() + '/render/live.html?v=' +
-        encodeURIComponent(CFG.version) + '&a=' + attempt;
+    // 诊断信标：workbench 的 CSP 里 connect-src / img-src 都不含 127.0.0.1，
+    // 用 fetch 或 <img> 上报都会被打回；只有 frame-src 放行了本地端口，
+    // 所以拿一个隐藏 iframe 当上报通道。
+    var beaconFrame = null;
+    function beacon(event) {
+      try {
+        if (!beaconFrame) {
+          beaconFrame = document.createElement('iframe');
+          beaconFrame.id = 'backgroundcover-beacon';
+          beaconFrame.setAttribute('aria-hidden', 'true');
+          beaconFrame.style.cssText =
+            'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none;';
+          (document.body || root).appendChild(beaconFrame);
+        }
+        beaconFrame.src =
+          'http://127.0.0.1:' + (activePort || ports[0]) + '/diag?event=' + encodeURIComponent(event);
+      } catch (err) {
+        // 上报失败不影响背景本身
+      }
+    }
+
+    function frameUrl(port) {
+      return 'http://127.0.0.1:' + port + '/render/live.html?v=' +
+        encodeURIComponent(CFG.version) +
+        '&app=' + encodeURIComponent(CFG.app || '') +
+        '&a=' + attempt;
+    }
+
+    function load() {
+      if (ready || attempt >= MAX_ATTEMPTS) return;
+      activePort = targetPort();
+      sawBoot = false;
+      mount();
+      beacon('nav-a' + attempt + '-p' + activePort);
+      frame.src = frameUrl(activePort);
+      scheduleVerify();
+    }
+
+    /** 放弃当前端口：换下一个候选端口重新加载。 */
+    function advance() {
+      if (ready) return;
+      clearTimeout(verifyTimer);
+      verifyTimer = null;
+      attempt += 1;
+      if (attempt >= MAX_ATTEMPTS) {
+        shutdown();
+        return;
+      }
+      portIndex += 1;
+      quickFails = 0;
+      load();
+    }
+
+    /**
+     * 扩展已经不在了（卸载 / 禁用 / 换到另一个 IDE）：把注入留下的东西清干净。
+     * 只删自己创建的节点与样式，不碰 workbench 的任何原有结构；
+     * 之后不再重试，避免卸载后在后台空转。
+     */
+    function shutdown() {
+      clearTimeout(verifyTimer);
+      verifyTimer = null;
+      if (beaconFrame && beaconFrame.parentNode) beaconFrame.parentNode.removeChild(beaconFrame);
+      beaconFrame = null;
+      try {
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+      } catch (err) {
+        // iframe 已被外部移除
+      }
+      var style = document.getElementById(STYLE_ID);
+      if (style && style.parentNode) style.parentNode.removeChild(style);
+      root.classList.remove('backgroundcover-on');
+    }
+
+    /** 换了 src 之后，短时间内没有 state 回来就认为这个端口不是本 IDE 的服务。 */
+    function scheduleVerify() {
+      clearTimeout(verifyTimer);
+      verifyTimer = setTimeout(function () {
+        verifyTimer = null;
+        if (ready) return;
+        advance();
+      }, VERIFY_MS);
+    }
+
+    function markReady() {
+      ready = true;
+      clearTimeout(verifyTimer);
+      verifyTimer = null;
     }
 
     function mount() {
@@ -158,23 +434,6 @@ function buildScript(options) {
       }
     }
 
-    // 重试是刚需：窗口加载 workbench.html 的时刻往往早于扩展宿主启动本地服务，
-    // 首次加载会被拒连；Chromium 不会自动重试，不重试就会一直黑着。
-    // 起步要快（200ms）：窗口页面通常只比本地服务早几百毫秒，
-    // 用 1.2 秒起步会让背景白等好几秒。
-    var DELAYS = [200, 300, 500, 800, 1200, 1800, 2500];
-
-    function retryLater() {
-      if (ready || retryTimer || attempt >= MAX_ATTEMPTS) return;
-      retryTimer = setTimeout(function () {
-        retryTimer = null;
-        if (ready) return;
-        attempt += 1;
-        mount();
-        frame.src = frameUrl();
-      }, DELAYS[Math.min(attempt, DELAYS.length - 1)]);
-    }
-
     function post(payload) {
       try {
         if (frame.contentWindow) frame.contentWindow.postMessage(payload, '*');
@@ -183,13 +442,56 @@ function buildScript(options) {
 
     var focused = true;
     var lastEnabled = null;
+    var lastSurface = null;
+    var lastText = null;
+    var lastLight = null;
     var lastPong = Date.now();
+    // 渲染页脚本的第一条语句就会发 boot：收到它才说明这次导航的文档真的执行了。
+    // load 事件早于消息投递，所以要单独记一个标记来区分「端口不对」和「页面还活着」。
+    var sawBoot = false;
 
     function postFocus() {
-      post({ channel: CHANNEL, type: 'focus', focused: focused && !document.hidden });
+      // hidden 单独上报：渲染页在 iframe 里读不到 workbench 的可见性，
+      // 最小化时靠它立即静音（失焦不影响播放）。
+      post({
+        channel: CHANNEL,
+        type: 'focus',
+        focused: focused && !document.hidden,
+        hidden: !!document.hidden,
+      });
     }
 
     function apply(next) {
+      // 底衬强度与开关无关，随时可调，所以先于「开关没变」的早退处理
+      var surface = next && typeof next.surface === 'number' ? next.surface : 0;
+      if (surface !== lastSurface) {
+        lastSurface = surface;
+        root.style.setProperty('--bgcover-surface', String(surface));
+      }
+
+      // 文字增强：提亮 / 加深前景并加字形阴影
+      var text = !!(next && next.textContrast);
+      if (text !== lastText) {
+        lastText = text;
+        if (text) root.classList.add('backgroundcover-text');
+        else root.classList.remove('backgroundcover-text');
+      }
+
+      // 明暗主题：用扩展侧上报的 themeKind 决定文字增强是提亮还是加深。
+      // 1=浅色 2=深色 3=高对比深色 4=高对比浅色。
+      var kind = next && typeof next.themeKind === 'number' ? next.themeKind : 2;
+      var light = kind === 1 || kind === 4;
+      if (light !== lastLight) {
+        lastLight = light;
+        if (light) {
+          root.classList.add('backgroundcover-light');
+          root.classList.remove('backgroundcover-dark');
+        } else {
+          root.classList.add('backgroundcover-dark');
+          root.classList.remove('backgroundcover-light');
+        }
+      }
+
       var on = !!(next && next.enabled);
       if (on === lastEnabled) return;
       lastEnabled = on;
@@ -207,14 +509,25 @@ function buildScript(options) {
         lastPong = Date.now();
         return;
       }
+      // 渲染页脚本第一条语句就会发 boot：收不到说明脚本根本没执行
+      if (data.type === 'boot') {
+        sawBoot = true;
+        beacon('frame-boot-a' + attempt);
+        return;
+      }
+      // 渲染页发现这个端口的主人是另一个 IDE（老版本服务没有 app 校验时会走到这里）
+      if (data.type === 'wrongApp') {
+        advance();
+        return;
+      }
       if (data.type !== 'state') return;
       lastPong = Date.now();
-      // 渲染页能回话就说明本地服务通了，锁定这个端口并停止重试
-      ready = true;
-      activePort = currentPort();
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = null;
+      // 渲染页能回话就说明连对了服务，锁定这个端口并停止换端口
+      markReady();
+      try {
+        window.localStorage.setItem(PORT_KEY, String(activePort));
+      } catch (err) {
+        // 存储不可用时忽略
       }
       apply(data.state);
     });
@@ -249,12 +562,50 @@ function buildScript(options) {
     document.addEventListener('visibilitychange', function () {
       // 窗口在后台时定时器会被浏览器节流，恢复可见时重置计时，避免误判成“文档已死”
       lastPong = Date.now();
-      postFocus();
+      // visibilitychange 触发时 document.hidden 已经变了，立刻同步状态
+      if (document.hidden && focused) {
+        focused = false;
+        postFocus();
+      } else if (!document.hidden && !focused && document.hasFocus()) {
+        focused = true;
+        postFocus();
+      } else {
+        postFocus();
+      }
     });
+
+    // 定期健康检查：blur 事件在 Windows 上不总是可靠触发
+    // （Win+Tab / Alt+Tab / 点击其他程序的瞬间切换，浏览器可能来不及派发 blur）。
+    // 每 500ms 主动查一次 document.hasFocus() + document.hidden，
+    // 保证 focused 变量总能跟上真实状态。
+    var lastPostedHidden = document.hidden;
+    setInterval(function () {
+      var actuallyFocused = document.hasFocus() && !document.hidden;
+      if (actuallyFocused !== focused || document.hidden !== lastPostedHidden) {
+        focused = actuallyFocused;
+        lastPostedHidden = document.hidden;
+        postFocus();
+      }
+    }, 500);
+
     frame.addEventListener('load', function () {
       postFocus();
-      // load 事件在服务拒连时也会触发，所以要接着安排下一次重试
-      retryLater();
+      if (ready || sawBoot) return;
+      // 能走到 load 说明文档已经加载完成：内联的 live.js 按定义已经执行过，
+      // boot 也早于 load 发出。此时还没收到 boot，说明这次导航没拿到真正的渲染页
+      // （服务还没监听 / 端口属于别的进程）。先在同一端口快速重试，
+      // 服务刚启动是最常见的情况；连续两次不行才换端口。
+      clearTimeout(verifyTimer);
+      verifyTimer = setTimeout(function () {
+        verifyTimer = null;
+        if (ready || sawBoot) return;
+        if (quickFails < 2) {
+          quickFails += 1;
+          load();
+        } else {
+          advance();
+        }
+      }, 400);
     });
     setTimeout(postFocus, 500);
     setTimeout(postFocus, 2000);
@@ -275,7 +626,7 @@ function buildScript(options) {
         mount();
         if (!ready) {
           attempt += 1;
-          frame.src = frameUrl();
+          load();
         }
         return;
       }
@@ -285,12 +636,14 @@ function buildScript(options) {
         lastPong = Date.now();
         ready = false;
         attempt += 1;
-        frame.src = frameUrl();
+        quickFails = 0;
+        load();
       }
     }, 4000);
 
-    frame.src = frameUrl();
+    beacon('runtime-boot');
     mount();
+    load();
 
     window.__backgroundCover = {
       frame: frame,
@@ -298,7 +651,8 @@ function buildScript(options) {
       reload: function () {
         ready = false;
         attempt += 1;
-        frame.src = frameUrl();
+        quickFails = 0;
+        load();
       },
       state: function () {
         return {

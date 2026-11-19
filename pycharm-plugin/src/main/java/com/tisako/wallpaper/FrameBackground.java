@@ -30,8 +30,8 @@ import java.lang.reflect.Method;
  *   <li><b>虚化</b>：平台没有模糊能力，所以在生成画布时自己做一次可分离盒式模糊。</li>
  * </ul>
  *
- * <p><b>已知限制</b>：平台背景变换内部会把图像缩放缓存成 VolatileImage（约 120 秒才过期），
- * 替换图像内容不会刷新，因此这里只负责静态画面，尺寸变化时重建背景变换。
+ * <p><b>静态与动态的区别</b>：这里的平台 ImagePainter 带缩放缓存，适合静态画面；
+ * 动态画面由 {@link LiveBackgroundPainter} 直接绘制可变画布，不再逐帧重建这里的变换。
  */
 public final class FrameBackground implements Disposable {
 
@@ -150,9 +150,30 @@ public final class FrameBackground implements Disposable {
      */
     static BufferedImage render(Image source, int width, int height, String fit,
                                 java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
+        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        renderInto(canvas, source, fit, scrimRect, scrimPercent, posX);
+        return canvas;
+    }
+
+    /** 把源图绘制到已有的画布上，动画模式靠它复用同一块内存，避免每帧重分配。 */
+    static void renderInto(BufferedImage canvas, Image source, String fit,
+                           java.awt.Rectangle scrimRect, int scrimPercent, int posX) {
+        renderInto(canvas, source, fit, scrimRect, scrimPercent, posX, 1f);
+    }
+
+    /**
+     * 同 {@link #renderInto(BufferedImage, Image, String, java.awt.Rectangle, int, int)}，
+     * 但把不透明度直接烘焙进画布。
+     *
+     * <p>动画模式下平台一次整窗重绘会贴几十次背景；如果每次都是半透明合成，软件渲染下
+     * 每帧要 300ms 以上。烘焙后画布是不透明图，贴图退化成整块拷贝，快一个数量级。
+     */
+    static void renderInto(BufferedImage canvas, Image source, String fit,
+                           java.awt.Rectangle scrimRect, int scrimPercent, int posX, float alpha) {
+        int width = canvas.getWidth();
+        int height = canvas.getHeight();
         int sw = Math.max(1, source.getWidth(null));
         int sh = Math.max(1, source.getHeight(null));
-        BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = canvas.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -160,6 +181,8 @@ public final class FrameBackground implements Disposable {
         g.setColor(new java.awt.Color(30, 31, 34));
         g.fillRect(0, 0, width, height);
 
+        float opacity = Math.max(0f, Math.min(1f, alpha));
+        g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, opacity));
         String mode = fit == null ? "contain" : fit;
         if ("stretch".equals(mode)) {
             g.drawImage(source, 0, 0, width, height, null);
@@ -174,13 +197,13 @@ public final class FrameBackground implements Disposable {
             int dy = (height - dh) / 2;
             g.drawImage(source, dx, dy, dx + dw, dy + dh, 0, 0, sw, sh, null);
         }
+        g.setComposite(java.awt.AlphaComposite.SrcOver);
         // 代码区单独压暗：壁纸在项目树/工具栏照常透出，但文字背后更暗，阅读更轻松
         if (scrimRect != null && scrimPercent > 0) {
             g.setColor(new java.awt.Color(0, 0, 0, Math.min(100, scrimPercent) * 255 / 100));
             g.fillRect(scrimRect.x, scrimRect.y, scrimRect.width, scrimRect.height);
         }
         g.dispose();
-        return canvas;
     }
     /** 可分离盒式模糊，两遍滑动窗口，复杂度 O(像素数)，半径大也不卡。 */
     static BufferedImage blur(BufferedImage source, int radius) {
@@ -244,8 +267,8 @@ public final class FrameBackground implements Disposable {
         }
     }
 
-    @Override
-    public void dispose() {
+    /** 释放当前背景变换；调用方决定何时重绘。 */
+    private void disposeQuietly() {
         if (disposable != null) {
             try {
                 Disposer.dispose(disposable);
@@ -254,9 +277,15 @@ public final class FrameBackground implements Disposable {
             }
             disposable = null;
         }
-        if (panel != null) {
-            panel.repaint();
-            panel = null;
+        panel = null;
+    }
+
+    @Override
+    public void dispose() {
+        JPanel target = panel;
+        disposeQuietly();
+        if (target != null) {
+            target.repaint();
         }
         javax.swing.SwingUtilities.invokeLater(IdeBackgroundUtil::repaintAllWindows);
     }

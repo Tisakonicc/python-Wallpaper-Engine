@@ -34,9 +34,20 @@ public final class WallpaperServer {
         public final int posX;
         public final boolean enabled;
         public final String currentId;
+        public final boolean musicEnabled;
+        public final int musicVolume;
+        public final boolean musicMuted;
+        /** 当前壁纸是否有可播放的音轨（视频类）。 */
+        public final boolean hasMusic;
+        public final boolean animationEnabled;
+        public final String animationState;
+        public final int animationFrames;
+        public final String animationStatus;
 
         public Snapshot(WallpaperEntry entry, int opacity, String fit, int blur, int scrim, int posX,
-                        boolean enabled, String currentId) {
+                        boolean enabled, String currentId,
+                        boolean musicEnabled, int musicVolume, boolean musicMuted, boolean hasMusic,
+                        boolean animationEnabled, String animationState, int animationFrames, String animationStatus) {
             this.entry = entry;
             this.opacity = opacity;
             this.fit = fit;
@@ -45,6 +56,14 @@ public final class WallpaperServer {
             this.posX = posX;
             this.enabled = enabled;
             this.currentId = currentId;
+            this.musicEnabled = musicEnabled;
+            this.musicVolume = musicVolume;
+            this.musicMuted = musicMuted;
+            this.hasMusic = hasMusic;
+            this.animationEnabled = animationEnabled;
+            this.animationState = animationState;
+            this.animationFrames = animationFrames;
+            this.animationStatus = animationStatus;
         }
     }
 
@@ -65,6 +84,12 @@ public final class WallpaperServer {
 
         /** 更新背景参数（面板上的滑块调用）。 */
         void updateSettings(int opacity, int blur, int scrim, int posX, String fit);
+
+        /** 更新壁纸音乐开关、音量与静音。 */
+        void updateMusic(boolean enabled, int volume, boolean muted);
+
+        /** 实验性动态背景开关。 */
+        void updateAnimation(boolean enabled);
 
     }
 
@@ -130,6 +155,23 @@ public final class WallpaperServer {
                     int scrim = parseInt(query.get("scrim"), 45);
                     int posX = parseInt(query.get("posx"), 50);
                     actions.updateSettings(opacity, blur, scrim, posX, query.get("fit"));
+                    sendText(exchange, 200, "ok");
+                }
+                case "/music/update" -> {
+                    Map<String, String> query = parseQuery(exchange.getRequestURI().getRawQuery());
+                    // 只改传过来的字段，避免某个参数缺失时把开关或音量重置
+                    Snapshot state = actions.snapshot();
+                    boolean enabled = query.containsKey("enabled") ? parseBool(query.get("enabled")) : state.musicEnabled;
+                    int volume = query.containsKey("volume") ? parseInt(query.get("volume"), state.musicVolume) : state.musicVolume;
+                    boolean muted = query.containsKey("muted") ? parseBool(query.get("muted")) : state.musicMuted;
+                    actions.updateMusic(enabled, volume, muted);
+                    sendText(exchange, 200, "ok");
+                }
+                case "/animation/update" -> {
+                    Map<String, String> query = parseQuery(exchange.getRequestURI().getRawQuery());
+                    Snapshot state = actions.snapshot();
+                    actions.updateAnimation(query.containsKey("enabled")
+                            ? parseBool(query.get("enabled")) : state.animationEnabled);
                     sendText(exchange, 200, "ok");
                 }
                 case "/media" -> sendFile(exchange, false);
@@ -234,6 +276,8 @@ public final class WallpaperServer {
             .row .val { width: 38px; text-align: right; color: #9ecbff; flex: 0 0 auto; }
             .row select { flex: 1; background: #2a2a33; color: #ddd; border: 1px solid #444;
                           border-radius: 4px; padding: 3px 6px; font: inherit; }
+            .row .mini { padding: 2px 10px; border-radius: 4px; flex: 0 0 auto; }
+            button:disabled { opacity: .45; cursor: default; }
             .dd { position: relative; flex: 1; }
             .dd > button { width: 100%; text-align: left; background: #2a2a33; color: #ddd;
                            border: 1px solid #444; border-radius: 4px; padding: 3px 6px;
@@ -281,6 +325,16 @@ public final class WallpaperServer {
                     <div data-v="stretch">拉伸铺满</div>
                   </div>
                 </div></div>
+              <div class="row"><label>壁纸音乐</label>
+                <button type="button" id="mt" class="ghost mini">播放</button>
+                <button type="button" id="mm" class="ghost mini">静音</button>
+                <span class="val" id="mvv" style="flex:1;width:auto;text-align:left"></span></div>
+              <div class="row"><label>音乐音量</label>
+                <input type="range" id="mv" min="0" max="100" step="5">
+                <span class="val" id="mvl"></span></div>
+              <div class="row"><label>动态画面</label>
+                <button type="button" id="at" class="ghost mini">开启动态</button>
+                <span class="val" id="av" style="flex:1;width:auto;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span></div>
             </div>
             <div class="grid" id="grid"></div>
             <script>
@@ -297,6 +351,40 @@ public final class WallpaperServer {
               document.getElementById('px').value = s.posX;
               document.getElementById('pxv').textContent = s.posX + '%';
               setFit(s.fit || 'contain');
+              paintMusic(s);
+              paintAnimation(s);
+            }
+
+            let lastState = null;
+
+            // 音乐控件：播放 / 静音是开关，音量滑块单独一行，避免窄面板里挤在一起
+            function paintMusic(s) {
+              const toggle = document.getElementById('mt');
+              const mute = document.getElementById('mm');
+              const off = !s.enabled;
+              toggle.textContent = s.musicEnabled ? '暂停' : '播放';
+              toggle.disabled = !s.hasMusic || off;
+              mute.textContent = s.musicMuted ? '取消静音' : '静音';
+              mute.disabled = !s.hasMusic || off || !s.musicEnabled;
+              document.getElementById('mv').value = s.musicVolume;
+              document.getElementById('mvl').textContent = s.musicVolume + '%';
+              document.getElementById('mvv').textContent =
+                off ? '壁纸已关闭' : (s.hasMusic ? '' : '当前壁纸没有音轨');
+            }
+
+            // 实验性动态画面：首次开启会在后台用 ffmpeg 抽帧，完成前仍显示静态图
+            function paintAnimation(s) {
+              const toggle = document.getElementById('at');
+              const off = !s.enabled;
+              toggle.textContent = s.animationEnabled ? '关闭动态' : '开启动态';
+              toggle.disabled = !s.hasMusic || off;
+              const status = document.getElementById('av');
+              status.title = '首次开启会用 ffmpeg 抽帧到 D:/WallpaperEngineFrames，完成后以 10fps 播放；动态模式暂不应用虚化';
+              if (!s.animationEnabled) {
+                status.textContent = off ? '' : '实验 · 10fps';
+              } else {
+                status.textContent = s.animationStatus || '';
+              }
             }
 
             const FIT_LABEL = {
@@ -316,9 +404,11 @@ public final class WallpaperServer {
 
             async function load(refreshControls) {
               const s = await (await fetch('/state.json?t=' + Date.now())).json();
+              lastState = s;
               document.getElementById('tg').textContent = s.enabled ? '关闭' : '启用';
               document.getElementById('cur').textContent = s.current || '未选择壁纸';
               if (refreshControls) paintControls(s);
+              else paintAnimation(s);
               const g = document.getElementById('grid');
               // 列表没变化就只更新选中态：整块重建会让所有缩略图重新下载，出现一闪一闪
               const sig = s.entries.map(e => e.id + '|' + e.title + '|' + e.kind + '|' + (e.hasPreview ? 1 : 0)).join(',');
@@ -368,6 +458,48 @@ public final class WallpaperServer {
             document.getElementById('bl').oninput = pushSoon;
             document.getElementById('sc').oninput = pushSoon;
             document.getElementById('px').oninput = pushSoon;
+
+            let musicTimer = null;
+
+            // 三个音乐参数一起下发，服务端就不用猜缺失字段该保留还是清零
+            async function pushMusic(enabled, volume, muted) {
+              await fetch('/music/update?enabled=' + (enabled ? 1 : 0)
+                + '&volume=' + volume + '&muted=' + (muted ? 1 : 0));
+              lastState = Object.assign({}, lastState || {}, {
+                musicEnabled: enabled, musicVolume: volume, musicMuted: muted
+              });
+              paintMusic(lastState);
+            }
+
+            document.getElementById('mt').onclick = () => {
+              const s = lastState;
+              if (s) pushMusic(!s.musicEnabled, s.musicVolume, s.musicMuted);
+            };
+            document.getElementById('mm').onclick = () => {
+              const s = lastState;
+              if (s) pushMusic(s.musicEnabled, s.musicVolume, !s.musicMuted);
+            };
+            document.getElementById('mv').oninput = () => {
+              const volume = +document.getElementById('mv').value;
+              document.getElementById('mvl').textContent = volume + '%';
+              const s = lastState;
+              if (!s) return;
+              clearTimeout(musicTimer);
+              musicTimer = setTimeout(() => pushMusic(s.musicEnabled, volume, s.musicMuted), 180);
+            };
+
+            async function pushAnimation(enabled) {
+              await fetch('/animation/update?enabled=' + (enabled ? 1 : 0));
+              lastState = Object.assign({}, lastState || {}, { animationEnabled: enabled });
+              paintAnimation(lastState);
+              // 服务端 apply 是异步的，稍后再取一次状态看到「正在生成动态帧」
+              setTimeout(() => load(true), 700);
+            }
+
+            document.getElementById('at').onclick = () => {
+              const s = lastState;
+              if (s) pushAnimation(!s.animationEnabled);
+            };
             document.getElementById('ftbtn').onclick = (e) => {
               e.stopPropagation();
               document.getElementById('ftmenu').classList.toggle('show');
@@ -406,6 +538,14 @@ public final class WallpaperServer {
                 .append(",\"scrim\":").append(snapshot.scrim)
                 .append(",\"posX\":").append(snapshot.posX)
                 .append(",\"fit\":").append(quote(snapshot.fit))
+                .append(",\"musicEnabled\":").append(snapshot.musicEnabled)
+                .append(",\"musicVolume\":").append(snapshot.musicVolume)
+                .append(",\"musicMuted\":").append(snapshot.musicMuted)
+                .append(",\"hasMusic\":").append(snapshot.hasMusic)
+                .append(",\"animationEnabled\":").append(snapshot.animationEnabled)
+                .append(",\"animationState\":").append(quote(snapshot.animationState))
+                .append(",\"animationFrames\":").append(snapshot.animationFrames)
+                .append(",\"animationStatus\":").append(quote(snapshot.animationStatus))
                 .append(",\"current\":").append(quote(snapshot.entry == null ? "" : snapshot.entry.title))
                 .append(",\"entries\":[");
         boolean first = true;
@@ -562,6 +702,12 @@ public final class WallpaperServer {
         } catch (NumberFormatException err) {
             return fallback;
         }
+    }
+
+    private static boolean parseBool(String raw) {
+        if (raw == null) return false;
+        String value = raw.trim().toLowerCase(Locale.ROOT);
+        return "1".equals(value) || "true".equals(value) || "on".equals(value) || "yes".equals(value);
     }
 
     private static Map<String, String> parseQuery(String raw) {

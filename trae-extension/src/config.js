@@ -8,8 +8,9 @@ const VERSION = pkg.version;
 /**
  * 本地服务端口。workbench.html 是静态文件，注入脚本必须写死端口，
  * 所以端口固定而不是随机；被占用时按顺序换下一个，并重新注入。
+ * 留够余量：同时开着多个 IDE（Trae / VS Code / Insiders）时每个都要占一个。
  */
-const PORT_CANDIDATES = [32123, 32124, 32125];
+const PORT_CANDIDATES = [32123, 32124, 32125, 32126, 32127, 32128];
 
 /** 注入块标记，patcher 用它定位与还原。 */
 const MARKER = 'backgroundcover';

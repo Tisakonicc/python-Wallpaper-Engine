@@ -57,12 +57,24 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         public int scrim = 45;
         /** 水平位置 0~100：50 居中，0 贴左，100 贴右。 */
         public int posX = 50;
+        /** 是否播放视频壁纸自带的音轨。 */
+        public boolean musicEnabled = true;
+        /** 壁纸音乐音量 0~100。 */
+        public int musicVolume = WallpaperMusic.DEFAULT_VOLUME;
+        /** 壁纸音乐静音（保留音量值）。 */
+        public boolean musicMuted;
+        /** 实验性动态背景：预抽帧后以 10fps 轮播。 */
+        public boolean animationEnabled;
         public List<String> imports = new ArrayList<>();
     }
 
     private Settings settings = new Settings();
     private List<WallpaperEntry> entries = List.of();
     private final WallpaperServer server;
+    /** 视频壁纸自带的背景音乐，与静态画面相互独立。 */
+    private final WallpaperMusic music = new WallpaperMusic();
+    /** 实验性动态画面（路线 A：自建 Painter 复用背景画布）。 */
+    private final AnimatedBackground animation;
     private Disposable background;
     /** 服务已释放后，后台解码回调不要再碰界面。 */
     private volatile boolean disposed;
@@ -109,7 +121,18 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             public void updateSettings(int opacity, int blur, int scrim, int posX, String fit) {
                 WallpaperService.this.updateSettings(opacity, blur, scrim, posX, fit);
             }
+
+            @Override
+            public void updateMusic(boolean enabled, int volume, boolean muted) {
+                WallpaperService.this.updateMusic(enabled, volume, muted);
+            }
+
+            @Override
+            public void updateAnimation(boolean enabled) {
+                WallpaperService.this.updateAnimation(enabled);
+            }
         });
+        animation = new AnimatedBackground(this);
     }
 
     public static WallpaperService getInstance() {
@@ -199,6 +222,42 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         apply();
     }
 
+    /** 面板的音乐控件调用：只改声音，不重画背景。 */
+    public void updateMusic(boolean enabled, int volume, boolean muted) {
+        settings.musicEnabled = enabled;
+        settings.musicVolume = Math.max(0, Math.min(100, volume));
+        settings.musicMuted = muted;
+        music.setVolume(settings.musicVolume);
+        music.setMuted(settings.musicMuted);
+        syncMusic();
+    }
+
+    /** 面板 / 设置页的动态背景开关。 */
+    public void updateAnimation(boolean enabled) {
+        settings.animationEnabled = enabled;
+        apply();
+    }
+
+    /** 让当前播放的音轨和壁纸、开关状态保持一致；同一个文件不会重启播放。 */
+    private void syncMusic() {
+        if (!settings.enabled || !settings.musicEnabled) {
+            LOG.info("壁纸音乐跳过：壁纸关闭或音乐开关关闭（enabled=" + settings.enabled
+                    + ", musicEnabled=" + settings.musicEnabled + "）");
+            music.stop();
+            return;
+        }
+        WallpaperEntry entry = findEntry(settings.wallpaperId);
+        if (!WallpaperMusic.canPlay(entry)) {
+            LOG.info("壁纸音乐跳过：当前壁纸不可播放音频（"
+                    + (entry == null ? "未找到条目" : entry.title + ", kind=" + entry.kind) + "）");
+            music.stop();
+            return;
+        }
+        music.setVolume(settings.musicVolume);
+        music.setMuted(settings.musicMuted);
+        music.play(entry.media);
+    }
+
     public void apply() {
         ApplicationManager.getApplication().invokeLater(this::applyNow);
     }
@@ -213,15 +272,19 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         }
         clearBackground();
         if (!settings.enabled) {
+            music.stop();
+            animation.stop();
             LOG.info("壁纸已关闭，界面恢复原样");
             return;
         }
         if (entries.isEmpty()) rescan();
         WallpaperEntry entry = findEntry(settings.wallpaperId);
         if (entry == null) {
+            animation.stop();
             LOG.info("没有可用的壁纸，跳过");
             return;
         }
+        syncMusic();
         FrameBackground.JFrameHolder holder = findFrame();
         if (holder == null) {
             LOG.warn("找不到 IDE 主窗口，暂不设置背景");
@@ -240,6 +303,14 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
             }
         }
         sizeRetries = 0;
+
+        // 动态原型接管：生成帧期间 / 不可用时继续走下面的静态画面
+        if (!settings.animationEnabled) {
+            animation.stop();
+        } else if (animation.start(entry, holder)) {
+            LOG.info("动态背景生效：" + entry.title + "（" + animation.frameCount() + " 帧）");
+            return;
+        }
 
         // 视频：静态显示真实画面；GIF 也只取第一帧，不做动图播放
         Image still = loadStill(entry);
@@ -345,7 +416,7 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
 
     /** 编辑器可视区域在 contentPane 坐标系里的矩形，用于只压暗代码区。 */
     @Nullable
-    private java.awt.Rectangle editorRect(FrameBackground.JFrameHolder holder) {
+    java.awt.Rectangle editorRect(FrameBackground.JFrameHolder holder) {
         try {
             com.intellij.openapi.editor.Editor[] editors = com.intellij.openapi.editor.EditorFactory.getInstance().getAllEditors();
             if (editors.length == 0) return null;
@@ -392,7 +463,15 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
                 settings.scrim,
                 settings.posX,
                 settings.enabled,
-                entry == null ? "" : entry.id
+                entry == null ? "" : entry.id,
+                settings.musicEnabled,
+                settings.musicVolume,
+                settings.musicMuted,
+                WallpaperMusic.canPlay(entry),
+                settings.animationEnabled,
+                animation.stateName(),
+                animation.frameCount(),
+                animation.statusText()
         );
     }
 
@@ -453,6 +532,10 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         if (this.settings.imports == null) this.settings.imports = new ArrayList<>();
         if (this.settings.opacity <= 0) this.settings.opacity = DEFAULT_OPACITY;
         if (this.settings.fit == null || this.settings.fit.isBlank()) this.settings.fit = "contain";
+        // 0 是合法音量，只有越界才回落默认值
+        if (this.settings.musicVolume < 0 || this.settings.musicVolume > 100) {
+            this.settings.musicVolume = WallpaperMusic.DEFAULT_VOLUME;
+        }
         // 0.9.8 曾把默认值强制改成「铺满」，这里还原一次；之后用户自己选的保持不变
         if (!this.settings.fitReverted) {
             if ("cover".equals(this.settings.fit)) this.settings.fit = "contain";
@@ -473,6 +556,8 @@ public final class WallpaperService implements PersistentStateComponent<Wallpape
         resizeHook = null;
         hookedPanel = null;
         clearBackground();
+        animation.dispose();
+        music.dispose();
         server.stop();
     }
 }

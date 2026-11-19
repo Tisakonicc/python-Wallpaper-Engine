@@ -1,10 +1,10 @@
 {
   "name": "background-wallpaper-engine",
   "displayName": "Background-Wallpaper-Engine",
-  "description": "把 Steam Wallpaper Engine 的壁纸（视频 / 场景 / 网页）以及本地导入的视频、图片渲染成 IDE 背景。",
+  "description": "Give your IDE a pulse: Steam Wallpaper Engine videos, scenes and web wallpapers play as your background with their own soundtrack, one-click readability tools and shareable .pkg packs. 100% local, no telemetry.",
   "publisher": "tisakonicc",
   "author": "Tisako",
-  "version": "0.2.4",
+  "version": "0.4.12",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
@@ -21,8 +21,13 @@
     "background",
     "steam",
     "video background",
+    "scene.pkg",
+    "mpkg",
+    "animated wallpaper",
     "壁纸",
-    "背景"
+    "动态壁纸",
+    "背景",
+    "音乐"
   ],
   "galleryBanner": {
     "color": "#1f2430",
@@ -32,19 +37,19 @@
     "vscode": "^1.82.0"
   },
   "categories": [
-    "Themes",
+    "Visualization",
     "Other"
   ],
   "main": "./src/extension.js",
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "extensionKind": [
     "ui"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": false
     },
     "virtualWorkspaces": true
   },
@@ -68,7 +73,12 @@
       },
       {
         "command": "backgroundWallpaperEngine.import",
-        "title": "导入本地视频 / 图片…",
+        "title": "导入本地视频 / 图片 / 场景包…",
+        "category": "Background-Wallpaper-Engine"
+      },
+      {
+        "command": "backgroundWallpaperEngine.export",
+        "title": "导出场景包为 scene.pkg（分享用）",
         "category": "Background-Wallpaper-Engine"
       },
       {
@@ -124,6 +134,26 @@
           "scope": "application",
           "description": "壁纸与 UI 之间的压暗层。越高文字越清晰，且不会因画面变亮而失效。"
         },
+        "backgroundWallpaperEngine.autoContrast": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "markdownDescription": "根据壁纸亮度自动调整压暗（浅色主题则提亮）与轻微模糊，保证代码与文字清晰。默认关闭，需要时在面板「外观」里打开；开启后 `backgroundWallpaperEngine.scrim` 不再生效。"
+        },
+        "backgroundWallpaperEngine.surfaceOpacity": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1,
+          "scope": "application",
+          "markdownDescription": "侧栏、聊天面板、底部面板的底衬强度：0 = 完全透明（纯壁纸），1 = 完全遮住壁纸。文字压在亮画面上看不清时调高。"
+        },
+        "backgroundWallpaperEngine.textContrast": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "markdownDescription": "文字增强：把前景文字推向纯白（深色主题）/ 纯黑（浅色主题），并给字形加同色系阴影，让文字在亮壁纸上更清晰。默认关闭，需要时在面板「外观」里打开。只改前景色与阴影，不动语法高亮的 token 配色。"
+        },
         "backgroundWallpaperEngine.blur": {
           "type": "number",
           "default": 0,
@@ -159,18 +189,50 @@
         "backgroundWallpaperEngine.fps": {
           "type": "number",
           "default": 60,
-          "enum": [
-            30,
-            60
-          ],
+          "minimum": 1,
+          "maximum": 144,
           "scope": "application",
-          "description": "场景 / 网页壁纸的渲染帧率。视频壁纸由浏览器按原生帧率播放，不受此项影响。"
+          "description": "场景 / 网页壁纸的渲染帧率（1–144）。视频壁纸由浏览器按原生帧率播放，不受此项影响。"
+        },
+        "backgroundWallpaperEngine.muted": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "静音壁纸自带的背景音乐。关闭（默认）时播放带音轨的视频 / 场景壁纸的声音。"
+        },
+        "backgroundWallpaperEngine.volume": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 1,
+          "scope": "application",
+          "description": "壁纸背景音乐音量（0–1）。"
         },
         "backgroundWallpaperEngine.pauseOnBlur": {
           "type": "boolean",
           "default": true,
           "scope": "application",
-          "description": "窗口失焦时暂停播放，重新聚焦后恢复。"
+          "description": "窗口最小化时暂停播放，恢复显示后继续。切换窗口、点击 IDE 浮窗不再暂停。"
+        },
+        "backgroundWallpaperEngine.musicTrack": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "场景 / 网页壁纸自带多首音乐时选中的曲目值（对应 project.json 里 music 下拉框的 value）。留空表示沿用壁纸默认曲目。在面板「播放」页的「背景音乐」下拉框里切换。"
+        },
+        "backgroundWallpaperEngine.slideshow": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "开启壁纸轮播：按固定间隔在壁纸库中自动切换。"
+        },
+        "backgroundWallpaperEngine.slideshowInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 120,
+          "scope": "application",
+          "description": "壁纸轮播间隔（分钟），1–120。"
         }
       }
     }

@@ -1,18 +1,32 @@
 'use strict';
 
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const vscode = require('vscode');
 
 const { VERSION, PORT_CANDIDATES } = require('./config');
 const { scanLibrary } = require('./scanner');
-const { Imports, IMPORT_FILTERS, buildItem } = require('./imports');
+const { Imports, IMPORT_FILTERS, projectTitle } = require('./imports');
 const { startServer, probeServer } = require('./server');
 const { buildScript } = require('./runtime');
 const { WallpaperPanel } = require('./panel');
 const patcher = require('./patcher');
 
 const CONFIG_SECTION = 'backgroundWallpaperEngine';
+
+// 同一个 IDE 安装内的多个窗口共用一份本地服务；不同 IDE（Trae / VS Code）
+// 必须各用各的，否则会共用一个 32123，渲染页读到的是对方的壁纸状态。
+const APP_KEY = String(vscode.env.appRoot || vscode.env.appName || 'unknown');
+
+// Trae 的主窗口本来就是 no-user-gesture-required；只有 VS Code 是 user-gesture-required，
+// 而背景层是 pointer-events: none，永远拿不到手势，所以只在 VS Code 里放宽该项。
+const IS_TRAE = /trae/i.test(
+  `${vscode.env.appName || ''} ${vscode.env.appRoot || ''}`
+);
+
 const KIND_LABEL = {
   video: '视频',
   image: '动图',
@@ -31,6 +45,11 @@ let server = null;
 let serverPort = 0;
 let isOwner = false;
 let healthTimer = null;
+let slideshowTimer = null;
+
+// 渲染页实测的硬解能力（由本地服务的 onHwState 回调更新）：
+// ok=null 探测中，true 硬解，false 软解。面板据此显示状态徽章。
+let hwDecodeInfo = { ok: null, reason: '' };
 
 const scopedConfig = () => vscode.workspace.getConfiguration(CONFIG_SECTION);
 
@@ -51,6 +70,22 @@ function currentState() {
   const fit = cfg.get('fit', 'cover');
   const fps = Number(cfg.get('fps', 60));
   const pauseOnBlur = !!cfg.get('pauseOnBlur', true);
+  const autoContrast = cfg.get('autoContrast', false) === true;
+  // 侧栏 / 聊天 / 底部面板的底衬强度：0 = 纯壁纸全透，1 = 完全遮住
+  const surface = Math.min(1, Math.max(0, Number(cfg.get('surfaceOpacity', 0))));
+  // 文字增强：提亮 / 加深前景并加字形阴影
+  const textContrast = cfg.get('textContrast', false) === true;
+  // 1=浅色 2=深色 3=高对比深色 4=高对比浅色；渲染页据此决定是压暗还是提亮
+  const themeKind = vscode.window.activeColorTheme ? vscode.window.activeColorTheme.kind : 2;
+  const muted = !!cfg.get('muted', false);
+  const volume = Math.min(1, Math.max(0, Number(cfg.get('volume', 0.6))));
+  // 场景 / 网页壁纸自带的多首音乐：选中的曲目值（project.json 里 music combo 的 value）。
+  // 空串表示不主动覆盖，沿用壁纸默认值；"0" 通常是静音项。
+  const musicTrack = String(cfg.get('musicTrack') || '');
+
+  // 壁纸轮播：开启后按固定间隔在库里轮换
+  const slideshow = !!cfg.get('slideshow', false);
+  const slideshowInterval = Math.max(1, Number(cfg.get('slideshowInterval', 10)));
 
   const origin = serverPort ? `http://127.0.0.1:${serverPort}` : '';
   const wallpaper = item
@@ -63,11 +98,19 @@ function currentState() {
         preview: item.preview
           ? `${origin}/preview/${encodeURIComponent(item.id)}`
           : '',
+        // 视频壁纸的独立音轨（Opus）。原生 AAC 解不了的 IDE 用它出声
+        audio:
+          origin && item.kind === 'video'
+            ? `${origin}/audio/${encodeURIComponent(item.id)}`
+            : '',
       }
     : null;
 
   return {
     enabled,
+    // 已选壁纸的 ID 但库还没扫描完时，渲染页靠它继续保持密集轮询，
+    // 壁纸一出现就能立刻挂载，不用多等一个 1.5 秒的常规轮询周期。
+    wallpaperId: id,
     wallpaper,
     opacity,
     scrim,
@@ -76,6 +119,18 @@ function currentState() {
     fit,
     fps,
     pauseOnBlur,
+    autoContrast,
+    surface,
+    textContrast,
+    themeKind,
+    muted,
+    volume,
+    musicTrack,
+    // 音乐下拉框在 project.json 里的属性名（music / bgmTrack / …）；没有音乐时为空
+    musicKey: item && item.musicKey ? String(item.musicKey) : '',
+    musicOptions: Array.isArray(item && item.musicOptions) ? item.musicOptions : [],
+    slideshow,
+    slideshowInterval,
     // 配置变了 stamp 才变；渲染页据此跳过无意义的重绘
     stamp: [
       enabled ? 1 : 0,
@@ -88,6 +143,15 @@ function currentState() {
       fit,
       fps,
       pauseOnBlur ? 1 : 0,
+      autoContrast ? 1 : 0,
+      surface,
+      textContrast ? 1 : 0,
+      themeKind,
+      muted ? 1 : 0,
+      volume,
+      musicTrack,
+      slideshow ? 1 : 0,
+      slideshowInterval,
     ].join('|'),
     version: VERSION,
   };
@@ -112,24 +176,40 @@ async function reloadLibrary(notifyEmpty) {
 
   if (notifyEmpty && !library.length) {
     vscode.window.showWarningMessage(
-      '没有找到可用壁纸。请在 Steam 创意工坊订阅壁纸，或用面板里的“导入”选择本地视频 / 图片。'
+      '没有找到可用壁纸。请在 Steam 创意工坊订阅壁纸，或用面板里的“导入”选择本地视频 / 图片 / 场景包（.mpkg、.pkg）/ 网页壁纸文件夹。'
     );
   }
   return library;
 }
 
-/** 选择本地视频 / 图片并登记为壁纸。 */
+/** 选择本地视频 / 图片 / 场景包（.mpkg、.pkg）/ 网页壁纸目录并登记为壁纸。 */
 async function importMedia() {
   const picked = await vscode.window.showOpenDialog({
     canSelectMany: true,
     canSelectFiles: true,
-    canSelectFolders: false,
+    // 网页壁纸是一整个目录（导出/收到的那种），允许直接选文件夹
+    canSelectFolders: true,
     openLabel: '用作壁纸',
     filters: IMPORT_FILTERS,
   });
   if (!picked || !picked.length) return;
 
-  const added = await imports.add(picked.map((uri) => uri.fsPath));
+  // 手机包要解 ETC2、重新编码 PNG、补音频，给个进度条免得以为卡住了
+  let added;
+  try {
+    added = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在导入壁纸', cancellable: false },
+      (progress) => imports.add(
+        picked.map((uri) => uri.fsPath),
+        (text) => progress.report({ message: text })
+      )
+    );
+  } catch (err) {
+    const reason = err && err.message ? err.message : String(err);
+    log(`导入失败：${reason}`);
+    vscode.window.showErrorMessage(`Background-Wallpaper-Engine：导入失败。${reason}`);
+    return;
+  }
   await reloadLibrary(false);
   if (!added.length) {
     vscode.window.showInformationMessage('选中的文件都已导入过，或格式不受支持。');
@@ -138,7 +218,7 @@ async function importMedia() {
   }
 
   // 直接应用刚导入的最后一个（导入即生效），同时确保背景处于开启状态
-  const target = buildItem(added[added.length - 1]);
+  const target = added[added.length - 1];
   const cfg = scopedConfig();
   if (target) {
     await cfg.update('wallpaperId', target.id, vscode.ConfigurationTarget.Global);
@@ -148,6 +228,145 @@ async function importMedia() {
   }
   await sync();
   vscode.window.setStatusBarMessage(`已导入 ${added.length} 个壁纸并应用`, 4000);
+}
+
+/**
+ * 手机包（.mpkg）常常把 music 层引用的 sounds/*.flac 剥掉。
+ * 本机订阅过同一张壁纸时，桌面包里就有这些音轨，导入时直接搬过来。
+ */
+function supplementPkgsFor(workshopId) {
+  const id = String(workshopId || '');
+  if (!id) return [];
+  const out = [];
+  for (const item of library) {
+    if (item.imported || !item.dir || !item.file) continue;
+    if (String(item.id) !== id) continue;
+    out.push(path.join(item.dir, item.file));
+  }
+  return out;
+}
+
+/**
+ * 把当前壁纸导出成方便分享的形式：
+ *   scene        → scene.pkg（导入项取转换缓存，Steam 项取原文件）
+ *   video / image→ 原文件另存
+ *   web          → 整份目录复制到选定文件夹
+ */
+async function exportScene(id) {
+  if (!imports) return;
+  const wanted = String(id || '').trim() || String(scopedConfig().get('wallpaperId') || '').trim();
+  const item = library.find((entry) => entry.id === wanted);
+  if (!item) {
+    vscode.window.showInformationMessage('请先在面板里选择一个壁纸，再点导出。');
+    return;
+  }
+
+  if (item.kind === 'web') {
+    await exportWebDir(item);
+    return;
+  }
+
+  let source = null;
+  let ext = '.pkg';
+  if (item.kind === 'scene') {
+    const found = imports.packageFor(item.id);
+    source = found ? found.pkgPath : path.join(item.dir, item.file);
+  } else {
+    source = item.mediaPath || path.join(item.dir, item.file);
+    ext = path.extname(source) || '';
+  }
+
+  if (!source || !fs.existsSync(source)) {
+    vscode.window.showErrorMessage('Background-Wallpaper-Engine：找不到这个壁纸的源文件，可能已被移动或删除。');
+    return;
+  }
+
+  const name = safeFileName(item.title);
+  const target = await vscode.window.showSaveDialog({
+    saveLabel: '导出',
+    filters:
+      item.kind === 'scene'
+        ? { 场景包: ['pkg'] }
+        : { 壁纸文件: [String(ext.replace('.', '') || 'mp4')] },
+    defaultUri: vscode.Uri.file(path.join(os.homedir(), `${name}${ext}`)),
+  });
+  if (!target) return;
+
+  try {
+    fs.copyFileSync(source, target.fsPath);
+    log(`已导出壁纸：${target.fsPath}`);
+    vscode.window.showInformationMessage(
+      item.kind === 'scene'
+        ? `已导出 ${path.basename(target.fsPath)}（画面与音乐已打包在内，可直接发给别人导入）`
+        : `已导出 ${path.basename(target.fsPath)}`
+    );
+  } catch (err) {
+    const reason = err && err.message ? err.message : String(err);
+    log(`导出壁纸失败：${reason}`);
+    vscode.window.showErrorMessage(`Background-Wallpaper-Engine：导出失败。${reason}`);
+  }
+}
+
+/** 网页壁纸是一整个目录，导出时整份复制到用户选的文件夹下。 */
+async function exportWebDir(item) {
+  const picked = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+    openLabel: '导出到此文件夹',
+  });
+  if (!picked || !picked.length) return;
+
+  const base = picked[0].fsPath;
+  // 导出时再读一次 project.json：标题以工程内写的为准，文件夹名可能是错的编码
+  const name = safeFileName(projectTitle(item.dir) || item.title);
+  let dest = path.join(base, name);
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(base, `${name} (${i})`);
+
+  try {
+    copyTree(item.dir, dest);
+    if (!fs.existsSync(dest)) {
+      const landed = fs.readdirSync(base).join('、');
+      throw new Error(`没找到目标目录 ${dest}；当前目录下是：${landed}`);
+    }
+    log(`已导出网页壁纸：${dest}`);
+    vscode.window.showInformationMessage(`已导出网页壁纸到 ${dest}，对方用「导入…」选中这个文件夹即可。`);
+  } catch (err) {
+    const reason = err && err.message ? err.message : String(err);
+    log(`导出网页壁纸失败：${reason}`);
+    vscode.window.showErrorMessage(`Background-Wallpaper-Engine：导出失败。${reason}`);
+  }
+}
+
+/**
+ * 递归复制目录。
+ * 某些扩展宿主在落盘时会按 ANSI（GBK）重编码新建路径名，中文目录名会变成乱码，
+ * 所以 Windows 上交给 robocopy（子进程，路径以 UTF-16 传给系统），Node 只做兜底。
+ */
+function copyTree(from, to) {
+  if (process.platform === 'win32') {
+    try {
+      execFileSync(
+        'robocopy.exe',
+        [from, to, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS', '/NP'],
+        { windowsHide: true, stdio: 'ignore' }
+      );
+      return;
+    } catch (err) {
+      // robocopy 的 1~7 都算成功（有复制/有额外文件等），8 以上才是失败
+      if (typeof err.status === 'number' && err.status <= 7) return;
+    }
+  }
+  fs.cpSync(from, to, { recursive: true });
+}
+
+function safeFileName(name) {
+  const cleaned = String(name || '')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return cleaned || 'wallpaper';
 }
 
 async function removeImport(id) {
@@ -181,11 +400,13 @@ async function ensureServer() {
   }
 
   for (const port of PORT_CANDIDATES) {
-    // 别的窗口已经起了服务：直接共用，不必再注入一次
-    const health = await probeServer(port);
+    // 本 IDE 的其它窗口已经起了服务：直接共用，不必再注入一次。
+    // 端口被别的 IDE 占着时 probe 会返回 null，接着往下试下一个端口。
+    const health = await probeServer(port, APP_KEY);
     if (health) {
       serverPort = port;
       isOwner = false;
+      patchCache = null;   // 端口可能变了，注入脚本里的首选端口要跟着改
       log(`复用已存在的本地服务：端口 ${port}`);
       startHealthWatch();
       return true;
@@ -194,13 +415,20 @@ async function ensureServer() {
     try {
       server = await startServer({
         port,
+        appKey: APP_KEY,
         getState: currentState,
         getLibrary: () => library,
         assetsRoot: path.join(__dirname, '..', 'assets'),
         onLog: (line) => log(line),
+        // 渲染页探测到硬解能力后回调：更新进程内状态并刷新面板徽章
+        onHwState: (info) => {
+          hwDecodeInfo = { ok: info.ok, reason: info.reason || '' };
+          pushPanel();
+        },
       });
       serverPort = port;
       isOwner = true;
+      patchCache = null;   // 注入脚本里的首选端口要跟着改
       log(`本地渲染服务已启动：http://127.0.0.1:${port}`);
       server.on('error', (err) => log(`本地服务异常：${err.message}`));
       return true;
@@ -226,7 +454,7 @@ function startHealthWatch() {
       healthTimer = null;
       return;
     }
-    const health = await probeServer(serverPort || PORT_CANDIDATES[0]);
+    const health = await probeServer(serverPort || PORT_CANDIDATES[0], APP_KEY);
     if (health) return;
     log('共用的本地服务已消失，尝试接管端口。');
     await ensureServer();
@@ -244,7 +472,12 @@ let patchCache = null;
 
 function patchArtifacts() {
   if (!patchCache) {
-    const script = buildScript({ ports: PORT_CANDIDATES, version: VERSION });
+    // 端口列表固定为候选顺序，不再把自己当前占用的端口写进脚本：
+    // 同时开着 Trae / VS Code 时端口归属会变来变去，一改端口脚本哈希就变，
+    // 于是每次启动都重新注入并弹“重载窗口”。具体连哪个端口交给注入脚本
+    // 用 localStorage 记住上次成功的端口来优先尝试。
+    const ports = PORT_CANDIDATES.slice();
+    const script = buildScript({ ports, version: VERSION, app: APP_KEY });
     const stamp = crypto.createHash('sha1').update(script).digest('hex').slice(0, 8);
     patchCache = { script, stamp };
   }
@@ -261,6 +494,40 @@ function promptReload(message) {
     });
 }
 
+// 注入分两步：先在 product.json 里摘掉 workbench.html 的校验项，等 IDE 完全重启
+// （主进程重读校验清单）后再写注入块。`process.ppid` 就是 IDE 主进程的 PID：
+// 重载窗口不会变，完全退出重开才会变，正好用来判断“是否已经真的重启过”。
+const STAGE_KEY = 'patchStagedPid';
+
+function isWaitingRestart(appRoot) {
+  if (!context) return false;
+  const staged = context.globalState.get(STAGE_KEY);
+  return !!staged && staged.pid === process.ppid && staged.appRoot === appRoot;
+}
+
+function markWaitingRestart(appRoot) {
+  if (context) context.globalState.update(STAGE_KEY, { pid: process.ppid, appRoot });
+}
+
+function clearWaitingRestart() {
+  if (context) context.globalState.update(STAGE_KEY, undefined);
+}
+
+/** 像 PyCharm 那样提示重启，但不强行弹模态框：给一个“重启 IDE”的按钮。 */
+function promptFullRestart() {
+  vscode.window
+    .showInformationMessage(
+      `背景层需要重启一次 ${vscode.env.appName} 才能完成加载。请重启 IDE 后继续。`,
+      '重启 IDE',
+      '稍后'
+    )
+    .then((choice) => {
+      if (choice === '重启 IDE') {
+        vscode.commands.executeCommand('workbench.action.quit');
+      }
+    });
+}
+
 async function ensurePatched() {
   const appRoot = vscode.env.appRoot;
   if (!appRoot || !serverPort) return false;
@@ -271,6 +538,10 @@ async function ensurePatched() {
     return true;
   }
 
+  // 第一步已经做过，还在等完全重启：同一个主进程里继续等，绝不能提前写 html，
+  // 否则本条会话的完整性校验仍拿着旧清单，必然弹“安装似乎损坏”。
+  if (isWaitingRestart(appRoot)) return false;
+
   const result = patcher.apply(appRoot, script, stamp);
   if (!result.ok) {
     log(`注入失败：${result.reason}`);
@@ -278,11 +549,19 @@ async function ensurePatched() {
     return false;
   }
 
+  if (result.staged) {
+    markWaitingRestart(appRoot);
+    log('已从 product.json 摘除 workbench.html 的校验项，等待 IDE 完全重启后再写入注入块。');
+    promptFullRestart();
+    return false;
+  }
+
+  clearWaitingRestart();
   log(`已注入背景层：${result.target}`);
   if (result.checksum === 'detached' || result.checksum === 'absent') {
     log('已把 workbench.html 从 product.json 的校验清单中移除，之后不会再提示“安装似乎损坏”。');
   }
-  promptReload('背景层已注入，重载窗口即可看到背景。若仍提示“安装似乎损坏”，请完全退出 Trae 再重新打开（校验清单只在启动时读取，重载窗口不会重读）。');
+  promptReload('背景层已注入，重载窗口即可看到背景。');
   return true;
 }
 
@@ -314,9 +593,35 @@ function patchedNow() {
   }
 }
 
+/**
+ * VS Code 默认禁止没有用户手势的有声自动播放，而背景 iframe 不接收点击，
+ * 结果就是带音轨的壁纸只能静音。这里放宽 VS Code 主窗口的 autoplayPolicy；
+ * 主进程参数在启动时读取，所以改完需要完全重启一次（扩展升级后同理）。
+ */
+function ensureAutoplayPolicy() {
+  if (IS_TRAE) return;
+  const appRoot = vscode.env.appRoot;
+  if (!appRoot) return;
+
+  const result = patcher.applyAutoplayPolicy(appRoot);
+  if (!result.ok) {
+    log(`VS Code 自动播放策略处理失败：${result.reason}`);
+    return;
+  }
+  if (result.state === 'patched') {
+    log('已放宽 VS Code 主窗口的自动播放策略，壁纸音效将在下次完全重启后生效。');
+    promptReload('已启用壁纸音效支持，请完全退出 VS Code 再重新打开（不是重载窗口）。');
+  } else if (result.state === 'already') {
+    log('VS Code 自动播放策略已放宽。');
+  } else if (result.reason) {
+    log(`VS Code 自动播放策略跳过：${result.reason}`);
+  }
+}
+
 function panelState() {
   const s = currentState();
   const origin = serverPort ? `http://127.0.0.1:${serverPort}` : '';
+  const curItem = s.wallpaper ? library.find((item) => item.id === s.wallpaper.id) : null;
   return {
     enabled: s.enabled,
     current: s.wallpaper
@@ -324,7 +629,23 @@ function panelState() {
           id: s.wallpaper.id,
           kind: s.wallpaper.kind,
           title: s.wallpaper.title,
-          thumb: s.wallpaper.preview || '',
+          // 顶部“导出”按钮：场景导 pkg，视频/图片导原文件，网页导整份目录
+          exportable: !!curItem,
+          // 场景 / 网页壁纸自带的多首音乐；没有就传空数组，面板据此隐藏下拉框
+          musicKey: (curItem && curItem.musicKey) || '',
+          musicOptions: Array.isArray(curItem && curItem.musicOptions) ? curItem.musicOptions : [],
+          // preview 是磁盘绝对路径，直接塞进 img.src 在 webview 里加载不出来；
+          // 必须走本地服务的 /preview/<id>（导入的图片同样由这里代理）。
+          // 视频就算没有 preview 也走这个地址：服务端会用 ffmpeg 抽一帧。
+          thumb:
+            origin && (s.wallpaper.preview || s.wallpaper.kind === 'video')
+              ? `${origin}/preview/${encodeURIComponent(s.wallpaper.id)}`
+              : '',
+          src: origin
+            ? `${origin}/wallpapers/${encodeURIComponent(s.wallpaper.id)}/files/${encodeURIComponent(
+                s.wallpaper.file || ''
+              )}`
+            : '',
         }
       : null,
     items: library.map((item) => ({
@@ -333,17 +654,38 @@ function panelState() {
       title: item.title,
       description: item.description || '',
       imported: !!item.imported,
-      thumb: item.preview && origin ? `${origin}/preview/${encodeURIComponent(item.id)}` : '',
+      // 所有类型都能导出：场景导 pkg，视频/图片导原文件，网页导整份目录
+      exportable: true,
+      // 视频即使没有 preview 也给地址，服务端会抽帧当封面
+      thumb:
+        origin && (item.preview || item.kind === 'video')
+          ? `${origin}/preview/${encodeURIComponent(item.id)}`
+          : '',
+      // 没有封面图的视频：面板侧用这个地址取首帧当封面（导入的视频没有 preview）
+      src: origin
+        ? `${origin}/wallpapers/${encodeURIComponent(item.id)}/files/${encodeURIComponent(item.file)}`
+        : '',
     })),
     opacity: s.opacity,
     scrim: s.scrim,
     blur: s.blur,
     saturate: s.saturate,
+    autoContrast: s.autoContrast,
+    surfaceOpacity: s.surface,
+    textContrast: s.textContrast,
     fit: s.fit,
     fps: s.fps,
     pauseOnBlur: s.pauseOnBlur,
+    muted: s.muted,
+    volume: s.volume,
+    musicTrack: s.musicTrack,
+    slideshow: s.slideshow,
+    slideshowInterval: s.slideshowInterval,
+    port: serverPort,
     patched: patchedNow(),
     version: VERSION,
+    // 渲染页实测的硬解能力：ok=null 检测中 / true 硬解 / false 软解，面板 footer 显示徽章
+    hwDecode: hwDecodeInfo,
   };
 }
 
@@ -357,6 +699,14 @@ async function applyVisual(key, value) {
     fit: 'string',
     fps: 'number',
     pauseOnBlur: 'boolean',
+    autoContrast: 'boolean',
+    surfaceOpacity: 'number',
+    textContrast: 'boolean',
+    muted: 'boolean',
+    volume: 'number',
+    musicTrack: 'string',
+    slideshow: 'boolean',
+    slideshowInterval: 'number',
   };
   const type = allowed[key];
   if (!type) return;
@@ -399,6 +749,7 @@ function ensurePanel() {
     },
     importMedia,
     removeImport,
+    exportScene,
     visual: applyVisual,
     reload: () => vscode.commands.executeCommand('workbench.action.reloadWindow'),
     reapply: reapplyPatch,
@@ -434,6 +785,47 @@ function pushPanel() {
   if (panel) panel.push();
 }
 
+/** 停止壁纸轮播定时器。 */
+function stopSlideshow() {
+  if (slideshowTimer) {
+    clearInterval(slideshowTimer);
+    slideshowTimer = null;
+  }
+}
+
+/**
+ * 壁纸轮播：按配置间隔在库里轮换。
+ * 从当前壁纸的下一张开始，到末尾回到第一张；库里只有一张时不动。
+ */
+function startSlideshow() {
+  stopSlideshow();
+  const intervalMin = Math.max(1, Number(scopedConfig().get('slideshowInterval', 10)));
+  slideshowTimer = setInterval(async () => {
+    const cfg = scopedConfig();
+    if (!cfg.get('slideshow', false) || !cfg.get('enabled', true)) {
+      stopSlideshow();
+      return;
+    }
+    if (!library.length) return;
+    const curId = String(cfg.get('wallpaperId') || '');
+    let idx = library.findIndex((entry) => entry.id === curId);
+    if (idx < 0) idx = 0;
+    const next = library[(idx + 1) % library.length];
+    if (!next || next.id === curId) return;
+    await cfg.update('wallpaperId', next.id, vscode.ConfigurationTarget.Global);
+  }, intervalMin * 60 * 1000);
+}
+
+/** 按配置同步轮播定时器的启停。 */
+function syncSlideshow() {
+  const cfg = scopedConfig();
+  if (cfg.get('slideshow', false) && cfg.get('enabled', true)) {
+    startSlideshow();
+  } else {
+    stopSlideshow();
+  }
+}
+
 async function sync() {
   const cfg = scopedConfig();
   const id = String(cfg.get('wallpaperId') || '').trim();
@@ -461,6 +853,7 @@ async function sync() {
   }
 
   await ensurePatched();
+  syncSlideshow();
   pushPanel();
 }
 
@@ -513,12 +906,23 @@ async function reapplyPatch() {
   if (!serverPort) return;
 
   const appRoot = vscode.env.appRoot;
+  if (isWaitingRestart(appRoot)) {
+    promptFullRestart();
+    return;
+  }
   const { script, stamp } = patchArtifacts();
   const result = patcher.apply(appRoot, script, stamp);
   if (!result.ok) {
     vscode.window.showErrorMessage(`Background-Wallpaper-Engine：重新注入失败。${result.reason}`);
     return;
   }
+  if (result.staged) {
+    markWaitingRestart(appRoot);
+    log('已从 product.json 摘除 workbench.html 的校验项，等待 IDE 完全重启后再写入注入块。');
+    promptFullRestart();
+    return;
+  }
+  clearWaitingRestart();
   log(`已重新注入：${result.target}`);
   promptReload('背景层已重新注入，请重载窗口。');
 }
@@ -529,13 +933,19 @@ async function removePatch() {
     vscode.window.showErrorMessage(`Background-Wallpaper-Engine：移除失败。${result.reason}`);
     return;
   }
+  clearWaitingRestart();
   log(`已移除注入：${result.target || '（未找到 workbench.html）'}`);
+  if (!IS_TRAE) {
+    const audio = patcher.restoreAutoplayPolicy(vscode.env.appRoot);
+    if (audio.state === 'restored') log('已恢复 VS Code 的自动播放策略。');
+    else if (!audio.ok) log(`恢复自动播放策略失败：${audio.reason}`);
+  }
   promptReload('背景层注入已移除，请重载窗口还原 IDE。');
 }
 
 async function activate(extensionContext) {
   context = extensionContext;
-  imports = new Imports(extensionContext);
+  imports = new Imports(extensionContext, { resolveSupplement: supplementPkgsFor });
   output = vscode.window.createOutputChannel('Background-Wallpaper-Engine');
 
   // 状态栏就是用户要的“按钮”：左边一个打开面板，右边一个快速开关
@@ -559,6 +969,7 @@ async function activate(extensionContext) {
     }),
     vscode.commands.registerCommand('backgroundWallpaperEngine.choose', chooseWallpaper),
     vscode.commands.registerCommand('backgroundWallpaperEngine.import', importMedia),
+    vscode.commands.registerCommand('backgroundWallpaperEngine.export', () => exportScene()),
     vscode.commands.registerCommand('backgroundWallpaperEngine.toggle', toggleEnabled),
     vscode.commands.registerCommand('backgroundWallpaperEngine.reapply', reapplyPatch),
     vscode.commands.registerCommand('backgroundWallpaperEngine.remove', removePatch),
@@ -580,12 +991,17 @@ async function activate(extensionContext) {
 
   // 与是否选过壁纸无关：只要改过 workbench.html，就要保证校验值自洽，
   // 否则每次启动都会弹“安装似乎损坏”。
-  if (vscode.env.appRoot) repairChecksum(vscode.env.appRoot);
+  if (vscode.env.appRoot) {
+    repairChecksum(vscode.env.appRoot);
+    // VS Code 需要额外放宽自动播放策略，壁纸音效才能出声
+    ensureAutoplayPolicy();
+  }
 
   await sync();
 }
 
 function deactivate() {
+  stopSlideshow();
   if (healthTimer) {
     clearInterval(healthTimer);
     healthTimer = null;
@@ -601,6 +1017,28 @@ function deactivate() {
       // 进程正在退出
     }
     server = null;
+  }
+
+  // 只在「扩展已被卸载、等待重启删目录」时还原 workbench.html。
+  // IDE 卸载时会在 <extensions>/.obsolete 写下本版本目录名，正常退出、
+  // 重载窗口、禁用扩展都不会写，所以不会出现“每次启动都要重载一次”的副作用。
+  try {
+    const appRoot = vscode.env.appRoot;
+    const pending = patcher.isUninstallPending(context && context.extensionPath);
+    if (appRoot && pending && patchedNow()) {
+      const result = patcher.remove(appRoot);
+      if (result && result.ok) {
+        log('检测到扩展已卸载，已还原 workbench.html');
+      } else {
+        log(`卸载还原失败：${result && result.reason ? result.reason : '未知原因'}`);
+      }
+    }
+  } catch (err) {
+    log(`卸载还原异常：${err && err.message ? err.message : err}`);
+  }
+  if (output) {
+    output.dispose();
+    output = null;
   }
 }
 
