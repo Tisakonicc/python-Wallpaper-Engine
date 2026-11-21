@@ -660,6 +660,35 @@ function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey }) {
       req.on('end', () => {
         try {
           const file = path.join(path.dirname(THUMB_DIR), 'diag.log');
+          // 轮询级诊断写入很频繁：超过 8 MB 就轮转一份，避免无限增长。
+          let size = 0;
+          try {
+            size = fs.statSync(file).size;
+          } catch {
+            // 文件还不存在
+          }
+          if (size > 8 * 1024 * 1024) {
+            // 已经膨胀到 32 MB 以上的旧文件直接清空，不再保留一份 .1，避免继续占盘
+            if (size > 32 * 1024 * 1024) {
+              try {
+                fs.truncateSync(file, 0);
+              } catch {
+                // 截断失败也不影响壁纸
+              }
+            } else {
+              const old = `${file}.1`;
+              try {
+                fs.rmSync(old, { force: true });
+                fs.renameSync(file, old);
+              } catch {
+                try {
+                  fs.truncateSync(file, 0);
+                } catch {
+                  // 截断失败也不影响壁纸
+                }
+              }
+            }
+          }
           fs.appendFileSync(file, `${new Date().toISOString()} ${body}\n`, 'utf8');
         } catch {
           // 诊断写不进去不影响壁纸

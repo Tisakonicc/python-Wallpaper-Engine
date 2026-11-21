@@ -3,6 +3,16 @@
 本文件记录 `trae-extension`（Background-Wallpaper-Engine）的版本变化。
 更早的版本（0.1.5–0.2.14）见 [GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases)。
 
+## 0.4.13
+
+- 硬解判断改用 `navigator.mediaCapabilities.decodingInfo` 的 `powerEfficient`，不再依赖自造 H.264 样本；
+  修正样本被 Chromium 判为 `Unsupported configuration` 时一律显示「软解」的误判。旧内核没有该 API
+  时才退回 WebCodecs 实测。
+- 徽章补全状态：探测结果没送到面板时显示「未连接」；当前壁纸不是视频时显示「不适用」。
+- 渲染页每 15 秒重报一次缓存的探测结果，扩展宿主重启后徽章自动恢复。
+- 非属主窗口从 `/state.json` 同步 `hwDecode`，修掉多窗口下徽章一直停在「未连接」的问题。
+- `diag.log` 超过 8 MB 自动轮转为 `diag.log.1`；超过 32 MB 的旧文件直接清空，避免继续占盘。
+
 ## 0.4.12
 
 - 修复注入块 `app` 字段路径被转义错误，导致重载窗口后背景不自动显示、需要手动重新注入的问题。
@@ -44,8 +54,8 @@
 
 ## 0.4.3
 
-- 硬解探针升级到 v2：1280×720 Constrained Baseline + 带 AVCC description 的长度前缀 IDR 帧，
-  修复部分环境下 v1 探针超时导致的假阴性。
+- 硬解探针调整：使用 16×16 Constrained Baseline 的 Annex-B 样本实测，失败时输出具体原因，
+  便于区分「没有 WebCodecs」和「样本不被当前后端接受」。
 
 ## 0.4.2
 

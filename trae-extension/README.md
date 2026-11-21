@@ -18,7 +18,7 @@
 ![解码状态徽章](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/decode-badge.png)
 
 - 作者：Tisako
-- 版本：0.4.12
+- 版本：0.4.13
 - 许可证：MIT
 - 支持：Trae CN / VS Code（桌面版）
 - 发布：[GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)
@@ -29,7 +29,7 @@
 
 - **会动的壁纸，不是一张贴图**：视频、场景、网页壁纸都能跑；场景壁纸的动画、粒子、shader 由 WebGL 运行时真实渲染，和 Steam 里看到的一样。
 - **声音也一起搬进来**：壁纸自带的音轨与场景音乐直接播放，音量实时可调，一键静音；窗口最小化才暂停，切应用不中断。
-- **能硬解就不软解**：WebCodecs 实测解码能力，硬解可用直接播原片，否则回退 720p 代理；面板底部有「检测中 / 硬解 / 软解」徽章，不再是按 IDE 猜测。
+- **能硬解就不软解**：用 MediaCapabilities 的 `powerEfficient` 判断能否硬件解码（旧内核退回 WebCodecs 实测），硬解可用直接播原片，否则回退 720p 代理；面板底部有「检测中 / 硬解 / 软解 / 未连接」徽章，非视频壁纸显示「不适用」。
 - **好看的壁纸，值得分享**：导入别人的 `.mpkg` / `.pkg`，或把自己的壁纸导出成自包含 `scene.pkg`——对方不需要 Steam 也能直接用。
 - **代码永远看得清**：一键自动对比度 + 文字增强，亮画面上的代码不再糊成一片；两项默认关闭，壁纸保持原作者的样子。
 - **几百张壁纸也不卡**：封面在本地服务缩成 320px 并懒加载，翻列表依旧顺滑。
@@ -64,7 +64,7 @@
 - 场景 / 网页壁纸帧率 1–144 可调，可直接输入数字。
 - 仅在窗口最小化时暂停，切应用、点击桌面图标不中断；多窗口共用一个本地服务，服务消失后自动接管。
 - 播放视频音轨与场景 / 网页音效，支持静音与 0–100% 音量；系统拒绝有声自动播放时自动退回静音，画面不受影响。
-- **解码状态**：面板底部显示「检测中 / 硬解 / 软解」。硬解可用时视频直接播原片、不生成代理；软解时自动回退 720p 代理，悬停徽章可看探测失败原因。
+- **解码状态**：面板底部显示「检测中 / 硬解 / 软解 / 未连接」。硬解可用时视频直接播原片、不生成代理；软解时自动回退 720p 代理，悬停徽章可看探测失败原因。当前壁纸不是视频时显示「不适用」；「未连接」表示探测结果还没送到面板，点一次重载或等渲染页 15 秒后自动重报。
 
 ### 稳定性与可还原
 
@@ -85,7 +85,7 @@
 
 ### 方式一：VSIX 安装（推荐，Trae CN 与 VS Code 通用）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.12.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.13.vsix`；
 2. 打开 IDE 扩展面板，点右上角 `···` → **从 VSIX 安装**，选中刚下载的文件（也可直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
 
@@ -93,10 +93,10 @@
 
 ```powershell
 # Trae CN
-& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.12.vsix --force
+& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.13.vsix --force
 
 # VS Code
-code --install-extension background-wallpaper-engine-0.4.12.vsix --force
+code --install-extension background-wallpaper-engine-0.4.13.vsix --force
 ```
 
 ### 方式三：市场安装（VS Code 用户最省事）
@@ -181,7 +181,10 @@ codium --install-extension tisakonicc.background-wallpaper-engine
 聊天面板是独立 webview，父页面样式进不去。把「面板底衬」调到 0.4–0.6，在它背后垫一层即可。
 
 **面板底部显示「软解」怎么办？**
-说明当前 IDE 的 Chromium 没能用 GPU 解码这个视频。扩展会自动回退到 720p 代理，先保证流畅；悬停徽章可以看到探测失败原因。更新显卡驱动、或在 IDE 启动参数里确认没有禁用硬件加速，通常会回到「硬解」。软解状态下播 1080p / 4K 原片容易卡顿，不代表壁纸有问题。
+说明当前 IDE 的 Chromium 没有把 H.264 交给 GPU 解码。扩展会自动回退到 720p 代理，先保证流畅；悬停徽章可以看到原因（`software-only` / `media-cap-unsupported`）。更新显卡驱动、或在 IDE 启动参数里确认没有禁用硬件加速，通常会回到「硬解」。软解状态下播 1080p / 4K 原片容易卡顿，不代表壁纸有问题。
+
+**显示「未连接」或「不适用」？**
+「不适用」只会在当前壁纸是场景 / 网页 / 图片时出现——这些类型不经过视频解码，硬解状态没有意义。「未连接」表示探测结果还没送到面板：点一次「重载窗口」，或等渲染页 15 秒后自动重报；多窗口时非服务属主窗口也会从本地服务补齐状态。
 
 **提示「安装似乎损坏」？**
 0.4.5 起不应再出现：首次注入会先要求完全重启一次 IDE，重启后才写入背景层。见下方专节。
@@ -221,7 +224,8 @@ IDE 会在启动后校验 `workbench.html` 的哈希，而校验清单是**启�
 
 完整版本历史见 [CHANGELOG.md](CHANGELOG.md)。最新几版：
 
-- **0.4.12**：新增 WebCodecs 实测硬解探测与「检测中 / 硬解 / 软解」徽章，硬解可用直接播原片；修复最小化后音乐断续；两步注入彻底消除「安装似乎损坏」；文字增强在 VS Code 生效并三层强化；修正注入块 `app` 字段，重载后背景自动恢复。
+- **0.4.13**：硬解改用 MediaCapabilities 的 `powerEfficient` 判断，修正此前一律误判「软解」；徽章补上「未连接」「不适用」；多窗口 / 扩展宿主重启后自动恢复状态；`diag.log` 超过 8 MB 自动轮转，超过 32 MB 直接清空。
+- **0.4.12**：新增实测硬解探测与「检测中 / 硬解 / 软解」徽章，硬解可用直接播原片；修复最小化后音乐断续；两步注入彻底消除「安装似乎损坏」；文字增强在 VS Code 生效并三层强化；修正注入块 `app` 字段，重载后背景自动恢复。
 - **0.4.0**：修复 VS Code 视频壁纸无声与卡顿；音频转码改用 Vorbis，VS Code 默认生成 720p 代理；新增代理画质下拉框、按 IDE 隔离缓存和更详细的诊断日志。
 - **0.3.3**：修复自定义自绘下拉组件在暗色主题下选项文字看不清；网页壁纸切换背景音乐时除了引擎 `setProperties`，还会每 600ms 持续重投一次并直接调用 iframe 内 `wallpaperPropertyListener.applyUserProperties`，防止引擎默认值覆盖用户选择。
 - **0.3.2**：修复网页壁纸切换背景音乐不生效（引擎加载完成后用 `project.json` 默认属性覆盖一次，现在持续重新投递并调用页面自己的 listener）。

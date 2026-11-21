@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const vscode = require('vscode');
 
@@ -45,11 +46,62 @@ let server = null;
 let serverPort = 0;
 let isOwner = false;
 let healthTimer = null;
+let hwSyncTimer = null;
 let slideshowTimer = null;
 
 // 渲染页实测的硬解能力（由本地服务的 onHwState 回调更新）：
 // ok=null 探测中，true 硬解，false 软解。面板据此显示状态徽章。
 let hwDecodeInfo = { ok: null, reason: '' };
+let hwSyncInFlight = false;
+
+/**
+ * 非属主窗口不会收到渲染页的 onHwState 回调（结果只推给起服务的那一个扩展宿主），
+ * 所以从 /state.json 把服务端缓存的探测结果同步过来；扩展宿主重启后也靠它恢复。
+ */
+function fetchServerState(port, timeoutMs = 1200) {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port, path: '/state.json', timeout: timeoutMs },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+    req.on('error', () => resolve(null));
+  });
+}
+
+async function syncHwFromServer() {
+  if (!serverPort || hwSyncInFlight) return;
+  hwSyncInFlight = true;
+  try {
+    const state = await fetchServerState(serverPort);
+    const hw = state && state.hwDecode;
+    if (!hw) return;
+    const ok = hw.ok === true ? true : hw.ok === false ? false : null;
+    if (ok === null) return;
+    const reason = hw.reason ? String(hw.reason) : '';
+    if (hwDecodeInfo.ok === ok && hwDecodeInfo.reason === reason) return;
+    hwDecodeInfo = { ok, reason };
+    pushPanel();
+  } finally {
+    hwSyncInFlight = false;
+  }
+}
 
 const scopedConfig = () => vscode.workspace.getConfiguration(CONFIG_SECTION);
 
@@ -762,6 +814,8 @@ function ensurePanel() {
 
 function openPanel() {
   ensurePanel().show();
+  // 打开面板时先向本地服务要一次已缓存的硬解状态
+  syncHwFromServer();
 }
 
 function updateStatus(enabled, item) {
@@ -989,6 +1043,11 @@ async function activate(extensionContext) {
   await ensureServer();
   await reloadLibrary(false);
 
+  // 非属主窗口收不到 onHwState 推送，靠这个轮询从 /state.json 补齐徽章状态
+  hwSyncTimer = setInterval(() => {
+    if (panel && panel.isVisible()) syncHwFromServer();
+  }, 8000);
+
   // 与是否选过壁纸无关：只要改过 workbench.html，就要保证校验值自洽，
   // 否则每次启动都会弹“安装似乎损坏”。
   if (vscode.env.appRoot) {
@@ -1005,6 +1064,10 @@ function deactivate() {
   if (healthTimer) {
     clearInterval(healthTimer);
     healthTimer = null;
+  }
+  if (hwSyncTimer) {
+    clearInterval(hwSyncTimer);
+    hwSyncTimer = null;
   }
   if (panel) {
     panel.dispose();

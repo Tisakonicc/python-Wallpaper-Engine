@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="250" viewBox="0 0 920 250" font-family="Microsoft YaHei, Segoe UI, PingFang SC, sans-serif">
-  <rect width="920" height="250" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" font-family="Microsoft YaHei, Segoe UI, PingFang SC, sans-serif">
+  <rect width="1200" height="320" fill="#0d1117"/>
   <text x="36" y="44" fill="#e6edf3" font-size="20" font-weight="600">面板底部：视频解码状态徽章</text>
-  <text x="36" y="70" fill="#8b98a9" font-size="12">实测结果，不是按 IDE 猜测；软解时自动回退 720p 代理</text>
+  <text x="36" y="70" fill="#8b98a9" font-size="12">由 MediaCapabilities 的 powerEfficient 实测，不是按 IDE 猜测；软解时自动回退 720p 代理</text>
 
   <!-- checking -->
   <rect x="36" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#2b3445"/>
@@ -9,20 +9,33 @@
     <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
   </circle>
   <text x="90" y="138" fill="#c9d1d9" font-size="15" font-weight="600">检测中</text>
-  <text x="60" y="168" fill="#8b98a9" font-size="12">WebCodecs 实测解码一帧</text>
+  <text x="60" y="168" fill="#8b98a9" font-size="12">正在查询解码能力</text>
   <text x="60" y="188" fill="#8b98a9" font-size="12">10 秒超时兜底，不会一直闪</text>
 
   <!-- hardware -->
-  <rect x="327" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#35c08b"/>
-  <circle cx="363" cy="132" r="7" fill="#35c08b"/>
-  <text x="381" y="138" fill="#e6edf3" font-size="15" font-weight="600">硬解</text>
-  <text x="351" y="168" fill="#8b98a9" font-size="12">直接播放原片，不生成代理</text>
-  <text x="351" y="188" fill="#8b98a9" font-size="12">画质与帧率都保持原样</text>
+  <rect x="321" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#35c08b"/>
+  <circle cx="357" cy="132" r="7" fill="#35c08b"/>
+  <text x="375" y="138" fill="#e6edf3" font-size="15" font-weight="600">硬解</text>
+  <text x="345" y="168" fill="#8b98a9" font-size="12">直接播放原片，不生成代理</text>
+  <text x="345" y="188" fill="#8b98a9" font-size="12">画质与帧率都保持原样</text>
 
   <!-- software -->
-  <rect x="618" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#e0a33e"/>
-  <circle cx="654" cy="132" r="7" fill="#e0a33e"/>
-  <text x="672" y="138" fill="#e6edf3" font-size="15" font-weight="600">软解</text>
-  <text x="642" y="168" fill="#8b98a9" font-size="12">自动回退 720p 代理，降卡顿</text>
-  <text x="642" y="188" fill="#8b98a9" font-size="12">悬停可看探测失败原因</text>
+  <rect x="606" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#e0a33e"/>
+  <circle cx="642" cy="132" r="7" fill="#e0a33e"/>
+  <text x="660" y="138" fill="#e6edf3" font-size="15" font-weight="600">软解</text>
+  <text x="630" y="168" fill="#8b98a9" font-size="12">自动回退 720p 代理，降卡顿</text>
+  <text x="630" y="188" fill="#8b98a9" font-size="12">悬停可看 software-only 等原因</text>
+
+  <!-- disconnected -->
+  <rect x="891" y="96" width="266" height="112" rx="10" fill="#161b25" stroke="#2b3445"/>
+  <circle cx="927" cy="132" r="7" fill="#8b98a9"/>
+  <text x="945" y="138" fill="#c9d1d9" font-size="15" font-weight="600">未连接</text>
+  <text x="915" y="168" fill="#8b98a9" font-size="12">探测结果还没送到面板</text>
+  <text x="915" y="188" fill="#8b98a9" font-size="12">点重载，或等 15 秒自动重报</text>
+
+  <!-- n/a note -->
+  <g>
+    <rect x="36" y="232" width="1121" height="52" rx="10" fill="#101822" stroke="#2b3445"/>
+    <text x="56" y="263" fill="#c9d1d9" font-size="13">当前壁纸是场景 / 网页 / 图片时显示「不适用」——这些类型不经过视频解码，硬解状态只影响视频壁纸。</text>
+  </g>
 </svg>

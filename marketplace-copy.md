@@ -1,7 +1,7 @@
-﻿﻿﻿﻿# 三市场上架文案（Background Wallpaper Engine）
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# 三市场上架文案（Background Wallpaper Engine）
 
 渠道：**VS Code Marketplace** · **Open VSX** · **GitHub Releases**
-扩展版本：**0.4.12** · publisher / namespace：`tisakonicc`
+扩展版本：**0.4.13** · publisher / namespace：`tisakonicc`
 
 > 第 1 节是三个渠道共用的参数，先复制第 2 节到 VS Code，再把同一份（含第 3 节的安装命令）贴到 Open VSX，最后用第 4 节发 Release。
 
@@ -12,7 +12,7 @@
 | 字段 | 值 |
 | --- | --- |
 | displayName | `Background-Wallpaper-Engine` |
-| version | `0.4.12` |
+| version | `0.4.13` |
 | publisher | `tisakonicc` |
 | categories | `Visualization`, `Other` |
 | engines | `^1.82.0` |
@@ -126,9 +126,10 @@ status bar → pick one.
 - Text enhancement (off by default): strengthens editor, terminal, explorer and tab text without
   touching syntax colors.
 - 1–144 FPS for scene / web wallpapers, one shared local service across windows.
-- **Hardware decode first**: a WebCodecs probe decodes one real frame; when hardware decoding works the
-  original video plays untouched, otherwise the 720p proxy takes over. A badge in the panel shows
-  **checking / hardware / software**.
+- **Hardware decode first**: MediaCapabilities `powerEfficient` decides whether H.264 is GPU-decoded
+  (WebCodecs is only a fallback for old kernels); when hardware decoding works the original video plays
+  untouched, otherwise the 720p proxy takes over. The badge shows **checking / hardware / software /
+  disconnected**, and **n/a** for wallpapers that are not videos.
 - Volume 0–100% and mute; falls back to muted playback if the system blocks autoplay with audio.
 - Music pauses only when the window is minimized — switching apps or clicking desktop icons keeps it playing.
 
@@ -163,6 +164,16 @@ status bar → pick one.
 ### Release Notes（贴到市场的 Change Log）
 
 ```markdown
+## 0.4.13
+
+| Before (0.4.12) | Now (0.4.13) |
+| --- | --- |
+| A self-built H.264 sample was rejected as `Unsupported configuration`, so every machine showed "software" | Uses `mediaCapabilities.decodingInfo` `powerEfficient`; WebCodecs only for old kernels |
+| A bare "—" when the probe result did not reach the panel | Explicit "disconnected"; auto re-report every 15 s |
+| Scene / web wallpapers also showed decode states | Shows "n/a" — those wallpapers never go through video decoding |
+| Other windows stayed on "—" forever | Non-owner windows read `/state.json` every 8 s |
+| `diag.log` grew without limit (101 MB on one machine) | Rotates to `diag.log.1` after 8 MB |
+
 ## 0.4.12
 
 Rolls up every fix from 0.4.1 to 0.4.12.
@@ -234,7 +245,7 @@ On plain VS Code? Install from the
 - 发布命令（本机已登录时）：
 
 ```bash
-npx ovsx publish background-wallpaper-engine-0.4.12.vsix -p <token>
+npx ovsx publish background-wallpaper-engine-0.4.13.vsix -p <token>
 ```
 
 ---
@@ -243,13 +254,13 @@ npx ovsx publish background-wallpaper-engine-0.4.12.vsix -p <token>
 
 ### Tag 与标题
 
-- Tag：`trae-v0.4.12`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
-- Release title：`Trae / VS Code 扩展 v0.4.12`
+- Tag：`trae-v0.4.13`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
+- Release title：`Trae / VS Code 扩展 v0.4.13`
 - 是否勾选 Latest：**是**（三渠道的主版本）
 
 ### Release 正文模板
 
-正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.12，含效果图、版本对比与安装步骤），不要再单独维护一份模板。
+正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.13，含效果图、版本对比与安装步骤），不要再单独维护一份模板。
 
 ### 发布前命令
 
@@ -258,11 +269,11 @@ npx ovsx publish background-wallpaper-engine-0.4.12.vsix -p <token>
 npm run package
 
 # 2) 校验和（贴进 Release 正文）
-Get-FileHash background-wallpaper-engine-0.4.12.vsix -Algorithm SHA256 | ForEach-Object Hash
+Get-FileHash background-wallpaper-engine-0.4.13.vsix -Algorithm SHA256 | ForEach-Object Hash
 
 # 3) 传 GitHub Release
-gh release create trae-v0.4.12 background-wallpaper-engine-0.4.12.vsix `
-  --title "Trae / VS Code 扩展 v0.4.12" --notes-file release-notes.md --latest
+gh release create trae-v0.4.13 background-wallpaper-engine-0.4.13.vsix `
+  --title "Trae / VS Code 扩展 v0.4.13" --notes-file release-notes.md --latest
 ```
 
 ---
@@ -273,7 +284,7 @@ gh release create trae-v0.4.12 background-wallpaper-engine-0.4.12.vsix `
 
 | 问题 | 改动位置 |
 | --- | --- |
-| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.12**；PyCharm 插件同步到 **0.9.24**；SHA-256 已填入 `release-notes.md`（`403B899B…CFF380E`） |
+| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.13**；PyCharm 插件保持 **0.9.24**；SHA-256 已填入 `release-notes.md`（`1796DC47…181AF`） |
 | README 没有效果图 / 版本对比 | 新增 `docs/images/`（Trae 截图、两张壁纸示例、工作原理图、解码徽章图），根 README 增加「一眼看懂」「工作原理」「能力对照」「这版更新了什么」四节 |
 | 「VS Code 官方市场不收录本扩展」与「已上架 VS Code 官方市场」自相矛盾 | 根 `README.md` 改为「本扩展已上架 VS Code Marketplace 与 Open VSX」 |
 | `package.json` 短描述为中文长句 | 换成第 1 节的英文短描述（≤ 256 字符） |

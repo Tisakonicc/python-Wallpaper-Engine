@@ -41,8 +41,9 @@
   var destroyed = false;
   var startedAt = Date.now();
   // 硬解能力：null=探测中，true=可用（直接发原片走硬解），false=不可用（走代理软解兜底）。
-  // 由渲染进程里的 WebCodecs 实测得出，比服务端按 IDE 名猜更准。
+  // 优先由 MediaCapabilities 的 powerEfficient 判断，旧内核才退回 WebCodecs 实测。
   var hwState = null;
+  var hwReason = '';
   var hwProbeStarted = false;
 
   // 把关键事件写进扩展的输出面板，出问题时能直接看出卡在哪一步
@@ -66,14 +67,31 @@
    * 目标：判断当前 Chromium 渲染进程能不能用 GPU 硬解 H.264，能就让服务端发原片
    * （原生 <video> 走硬解），不能才退回 720p 代理软解。
    *
-   * 为什么不直接用 VideoDecoder.isConfigSupported：Chromium 在硬解不可用时对
-   * hardwareAcceleration:'prefer-hardware' 仍可能返回 supported（静默降级软解），
-   * isConfigSupported=true 不代表真硬解。所以这里用一段最小 H.264 样本实测：
-   * 先 isConfigSupported 排除明确不支持的，再创建 decoder 用 prefer-hardware 实际
-   * 解出一帧——能产出 VideoFrame 才判硬解路径可用。
+   * 首选 navigator.mediaCapabilities.decodingInfo：它由浏览器自己维护解码能力表，
+   * 直接返回 powerEfficient——true 表示会走 GPU / 专用解码器，false 表示软件解码。
+   * 比塞一段自造 H.264 样本让 WebCodecs 去解更可靠：样本的 profile / 分辨率 /
+   * description 只要有一项不被当前后端接受，就会误判成「软解」。
    *
-   * 样本：16x16 Constrained Baseline，SPS(7)+PPS(8)+IDR(5)，Annex-B，47 字节。
+   * WebCodecs 仅作为旧 Electron 没有 MediaCapabilities 时的兜底。
    */
+  var MC_PROFILES = [
+    {
+      contentType: 'video/mp4; codecs="avc1.640028"',
+      width: 1920,
+      height: 1080,
+      bitrate: 8000000,
+      framerate: 30
+    },
+    {
+      contentType: 'video/mp4; codecs="avc1.4D401F"',
+      width: 1280,
+      height: 720,
+      bitrate: 4000000,
+      framerate: 30
+    }
+  ];
+
+  // WebCodecs 兜底样本：16x16 Constrained Baseline，SPS(7)+PPS(8)+IDR(5)，Annex-B。
   var HW_PROBE_H264_B64 =
     'AAAAAWdCwArd7ARAAAADAEAAAAyDxIngAAAAAWjODyyAAAABZYiEBLyYoAA4o4A=';
 
@@ -127,70 +145,112 @@
     return 'avc1.' + hwHex(sps[1]) + hwHex(sps[2]) + hwHex(sps[3]);
   }
 
+  // MediaCapabilities：按浏览器自己的解码能力表判断是否硬件加速。
+  // 返回 null 表示当前环境没有这个 API，交给 WebCodecs 兜底。
+  function probeMediaCapabilities() {
+    if (!navigator.mediaCapabilities ||
+      typeof navigator.mediaCapabilities.decodingInfo !== 'function') {
+      return null;
+    }
+    var sawSoftware = false;
+    var chain = Promise.resolve(null);
+    MC_PROFILES.forEach(function (profile) {
+      chain = chain.then(function (hit) {
+        if (hit) return hit;
+        return navigator.mediaCapabilities
+          .decodingInfo({ type: 'file', video: profile })
+          .then(function (info) {
+            if (!info || !info.supported) return null;
+            if (info.powerEfficient) return { ok: true, reason: 'power-efficient' };
+            sawSoftware = true;
+            return null;
+          })
+          .catch(function () { return null; });
+      });
+    });
+    return chain.then(function (hit) {
+      if (hit) return hit;
+      return { ok: false, reason: sawSoftware ? 'software-only' : 'media-cap-unsupported' };
+    });
+  }
+
   function probeHwDecodeOnce() {
     return new Promise(function (resolve) {
       var settled = false;
-      var timer = setTimeout(function () { finish(false, 'timeout'); }, 1500);
+      var timer = setTimeout(function () { finish(false, 'timeout'); }, 2500);
       function finish(ok, reason) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         resolve({ ok: !!ok, reason: reason });
       }
-      if (typeof VideoDecoder === 'undefined' || typeof EncodedVideoChunk === 'undefined') {
-        finish(false, 'no-webcodecs');
-        return;
-      }
-      var sps = null, pps = null, idr = null;
-      try {
-        var nalus = hwSplitNalus(hwB64ToBytes(HW_PROBE_H264_B64));
-        for (var k = 0; k < nalus.length; k++) {
-          if (nalus[k].type === 7) sps = nalus[k].data;
-          else if (nalus[k].type === 8) pps = nalus[k].data;
-          else if (nalus[k].type === 5) idr = nalus[k].data;
-        }
-      } catch (e) {
-        finish(false, 'parse-sample:' + (e && e.message));
-        return;
-      }
-      if (!sps || !pps || !idr) { finish(false, 'no-nalus'); return; }
-      var codec = hwParseAvc1Codec(sps);
 
-      // 先过 isConfigSupported：prefer-hardware 明确不支持就直接判负，省得白建解码器
-      var checkSupported = VideoDecoder.isConfigSupported
-        ? VideoDecoder.isConfigSupported({ codec: codec, hardwareAcceleration: 'prefer-hardware' })
-        : Promise.resolve({ supported: true });
-      checkSupported.then(function (r) {
-        if (!r || !r.supported) { finish(false, 'isConfig-no'); return; }
-        try {
-          var dec = new VideoDecoder({
-            output: function (frame) {
-              // 产出首帧即认定硬解路径可用（prefer-hardware 下能出帧说明硬件后端活着）
-              try { frame.close(); } catch (e) {}
-              finish(true, 'decoded');
-            },
-            error: function (e) {
-              finish(false, 'decoder-error:' + (e && e.message));
-            },
-          });
-          dec.configure({
-            codec: codec,
-            codedWidth: 16,
-            codedHeight: 16,
-            hardwareAcceleration: 'prefer-hardware',
-            // 不给 description：chunk 直接用整条 Annex-B 样本（SPS+PPS+IDR），
-            // Chromium 会从流里解析参数，兼容性最好，不依赖 {SPS,PPS} 非标准扩展
-          });
-          // 整个样本就是合法的 Annex-B 访问单元（已用 ffmpeg 验证可解出真实帧），
-          // 直接作为一个 key chunk 喂入即可
-          dec.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data: hwB64ToBytes(HW_PROBE_H264_B64) }));
-          dec.flush().catch(function () {});
-        } catch (e) {
-          finish(false, 'configure-throw:' + (e && e.message));
+      function webCodecsProbe() {
+        if (typeof VideoDecoder === 'undefined' || typeof EncodedVideoChunk === 'undefined') {
+          finish(false, 'no-webcodecs');
+          return;
         }
-      }).catch(function (e) {
-        finish(false, 'isConfig-throw:' + (e && e.message));
-      });
+        var sps = null, pps = null, idr = null;
+        try {
+          var nalus = hwSplitNalus(hwB64ToBytes(HW_PROBE_H264_B64));
+          for (var k = 0; k < nalus.length; k++) {
+            if (nalus[k].type === 7) sps = nalus[k].data;
+            else if (nalus[k].type === 8) pps = nalus[k].data;
+            else if (nalus[k].type === 5) idr = nalus[k].data;
+          }
+        } catch (e) {
+          finish(false, 'parse-sample:' + (e && e.message));
+          return;
+        }
+        if (!sps || !pps || !idr) { finish(false, 'no-nalus'); return; }
+        var codec = hwParseAvc1Codec(sps);
+
+        // 先过 isConfigSupported：prefer-hardware 明确不支持就直接判负，省得白建解码器
+        var checkSupported = VideoDecoder.isConfigSupported
+          ? VideoDecoder.isConfigSupported({ codec: codec, hardwareAcceleration: 'prefer-hardware' })
+          : Promise.resolve({ supported: true });
+        checkSupported.then(function (r) {
+          if (!r || !r.supported) { finish(false, 'isConfig-no'); return; }
+          try {
+            var dec = new VideoDecoder({
+              output: function (frame) {
+                // 产出首帧即认定硬解路径可用（prefer-hardware 下能出帧说明硬件后端活着）
+                try { frame.close(); } catch (e) {}
+                finish(true, 'webcodecs-decoded');
+              },
+              error: function (e) {
+                finish(false, 'decoder-error:' + (e && e.message));
+              },
+            });
+            dec.configure({
+              codec: codec,
+              codedWidth: 16,
+              codedHeight: 16,
+              hardwareAcceleration: 'prefer-hardware',
+              // 不给 description：chunk 直接用整条 Annex-B 样本（SPS+PPS+IDR），
+              // Chromium 会从流里解析参数，兼容性最好，不依赖 {SPS,PPS} 非标准扩展
+            });
+            // 整个样本就是合法的 Annex-B 访问单元（已用 ffmpeg 验证可解出真实帧），
+            // 直接作为一个 key chunk 喂入即可
+            dec.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data: hwB64ToBytes(HW_PROBE_H264_B64) }));
+            dec.flush().catch(function () {});
+          } catch (e) {
+            finish(false, 'configure-throw:' + (e && e.message));
+          }
+        }).catch(function (e) {
+          finish(false, 'isConfig-throw:' + (e && e.message));
+        });
+      }
+
+      var viaMediaCapabilities = probeMediaCapabilities();
+      if (viaMediaCapabilities) {
+        viaMediaCapabilities.then(function (res) {
+          if (res) finish(res.ok, res.reason);
+          else webCodecsProbe();
+        });
+        return;
+      }
+      webCodecsProbe();
     });
   }
 
@@ -199,12 +259,20 @@
     hwProbeStarted = true;
     probeHwDecodeOnce().then(function (res) {
       hwState = res.ok ? true : false;
-      diagReport({ step: 'hw-probe', ok: res.ok, reason: res.reason });
+      hwReason = res.reason || '';
+      reportHwState();
       // 探测出能硬解，且当前正在播视频：把 src 换成带 hw=1 的原片，跳过代理
       if (res.ok && current && current.kind === 'video' && current.video) {
         applyHwSource();
       }
     });
+  }
+
+  // 扩展宿主重启不会重新加载这个页面，探测结果会随着服务重启丢失。
+  // 定期把缓存结果再报一次，面板就能从「未连接」恢复成硬解 / 软解。
+  function reportHwState() {
+    if (hwState === null) return;
+    diagReport({ step: 'hw-probe', ok: hwState, reason: hwReason, cached: true });
   }
 
   // 给当前视频 src 加上 hw=1，让服务端发原片（走硬解）。
@@ -1837,6 +1905,13 @@
   // 尽早探测硬解能力：能硬解就让服务端发原片，不能才走代理软解。
   // 结果缓存到 hwState，build 视频时据此决定 src 是否带 hw=1。
   startHwProbe();
+
+  // 扩展宿主重启 / 服务切换端口后，服务端状态会归零；定期重报一次缓存结果。
+  // 15 秒足够让面板从「未连接」自动恢复，又不会给 diag.log 造成明显体积。
+  setInterval(reportHwState, 15000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) reportHwState();
+  });
 
   // 接管本帧的 AudioContext 构造器（场景壁纸的 WebAudio 音乐由此登记），
   // 必须在加载渲染核心之前完成。媒体元素的 play() 同样先接管：

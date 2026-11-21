@@ -8,13 +8,13 @@
 
 | 目录 | 目标 IDE | 形态 | 版本 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.12** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.13** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2022.3+（IntelliJ 平台） | Gradle 插件（zip） | **v0.9.24** |
 
 > **版本说明**：`trae-extension` 特别面向 Trae CN，VS Code 用户也可使用且支持壁纸音效（扩展会放宽 VS Code 主窗口的自动播放策略，安装或升级后需完全退出重启一次）。当前版本支持视频 / 场景 / 网页壁纸、壁纸原声、硬解 / 软解状态徽章、场景包导入导出分享。它通过修改 `workbench.html` 注入背景层，属非官方实现，风险自担，与 Trae / Steam / Wallpaper Engine 无隶属关系。详见 [扩展说明](trae-extension/README.md)。
 
 > 直链下载（按 tag 固定，不会随 Release 变化）：
-> Trae 扩展 [background-wallpaper-engine-0.4.12.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.12/background-wallpaper-engine-0.4.12.vsix) ·
+> Trae 扩展 [background-wallpaper-engine-0.4.13.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.13/background-wallpaper-engine-0.4.13.vsix) ·
 > PyCharm 插件 [background-wallpaper-engine-0.9.24.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/pycharm-v0.9.24/background-wallpaper-engine-0.9.24.zip)
 
 ## 一眼看懂
@@ -43,7 +43,7 @@
 | 网页壁纸 | iframe 实时渲染 | 静态首帧 |
 | GIF / APNG | 动画播放 | 静态首帧 |
 | 壁纸原声 | 音量 / 静音 / 选曲 / 轮播 | AAC / MP3 音轨，播放 / 暂停 / 音量 / 静音 |
-| 解码状态徽章 | 检测中 / 硬解 / 软解 | — |
+| 解码状态徽章 | 检测中 / 硬解 / 软解 / 未连接；非视频壁纸显示「不适用」 | — |
 | 可读性 | 自动对比度 / 文字增强 / 面板底衬 | 不透明度 / 虚化 / 代码区压暗 / 水平位置 |
 | 导入 .mpkg / .pkg | 支持 | 不直接导入（扫描 Wallpaper Engine 库） |
 | 导出分享 | scene.pkg | — |
@@ -52,10 +52,10 @@
 
 | 项目 | 上一版 | 当前版 | 主要变化 |
 | --- | --- | --- | --- |
-| Trae / VS Code 扩展 | v0.4.0 | **v0.4.12** | 实测硬解探测与解码徽章；最小化时音乐不再断续；两步注入彻底消除「安装似乎损坏」；文字增强在 VS Code 生效并三层强化；重载后背景自动恢复 |
+| Trae / VS Code 扩展 | v0.4.12 | **v0.4.13** | 硬解改用 MediaCapabilities 的 `powerEfficient` 判断，修正始终误判「软解」；多窗口 / 扩展宿主重启后徽章从「未连接」自动恢复；非视频壁纸显示「不适用」；diag.log 加上限 |
 | PyCharm 插件 | v0.9.16 | **v0.9.24** | 新增视频壁纸背景音乐（AAC / MP3）；新增实验动态画面（10fps，ffmpeg 预抽帧缓存到 D 盘）；动态模式暂不应用虚化 |
 
-解码徽章对应的三种状态：
+解码徽章的状态：检测中 / 硬解 / 软解 / 未连接；当前壁纸不是视频时显示「不适用」。
 
 ![解码状态徽章](docs/images/decode-badge.png)
 
@@ -63,7 +63,7 @@
 
 ### Trae CN / VS Code（vsix）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.12.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.13.vsix`；
 2. 打开 IDE 的扩展面板，点右上角 `···` → **从 VSIX 安装**（也可以直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**，让扩展完成首次注入。
 
@@ -78,7 +78,7 @@
 - **壁纸面板**：状态栏「壁纸」按钮打开，缩略图网格、类型筛选、关键词搜索、即点即换
 - **四类壁纸**：视频 / 场景（`webwallgl` WebGL 渲染）/ 网页 / 图片
 - **帧率可调**：场景 / 网页壁纸 1–144 FPS，滑块拖动或直接输入数字
-- **硬解优先**：WebCodecs 实测解码能力，硬解可用直接播原片，软解回退 720p 代理；面板底部有「检测中 / 硬解 / 软解」徽章
+- **硬解优先**：MediaCapabilities 的 `powerEfficient` 判断能否硬件解码（旧内核退回 WebCodecs 实测），硬解可用直接播原片，软解回退 720p 代理；面板底部有「检测中 / 硬解 / 软解 / 未连接」徽章，非视频壁纸显示「不适用」
 - **背景音乐**：播放视频音轨 / 场景音效，面板内可一键静音并实时调节音量；窗口最小化才暂停，切应用、点桌面图标不中断
 - **外部导入**：本地视频、动图、图片直接当壁纸，**不复制文件**只记录路径；导入的视频会自动抽首帧当封面（需要系统 `ffmpeg`）
 - **视觉调节**：不透明度、压暗层、模糊、饱和度、缩放方式（铺满 / 完整 / 拉伸）实时生效；自动对比度 / 文字增强默认关闭
@@ -162,12 +162,22 @@ v0.6.0 改为复用平台自己的「背景图像」能力：`IdeBackgroundUtil.
 
 ## 更新日志
 
+### trae-extension v0.4.13
+
+- **硬解判断修正**：改用 `navigator.mediaCapabilities.decodingInfo` 的 `powerEfficient` 判断是否硬件解码，
+  不再依赖自造 H.264 样本；旧内核没有该 API 时才退回 WebCodecs 实测。修掉了此前实测样本被
+  Chromium 判为「Unsupported configuration」、导致一律显示「软解」的问题。
+- **徽章状态补全**：新增「未连接」状态（探测结果没送到面板），非视频壁纸显示「不适用」；
+  渲染页每 15 秒重报一次缓存结果，扩展宿主重启后徽章会自动恢复。
+- **多窗口同步**：非属主窗口从 `/state.json` 读取解码状态，不再一直停在「未连接」。
+- **诊断日志**：`diag.log` 超过 8 MB 自动轮转为 `diag.log.1`；超过 32 MB 的旧文件直接清空，避免继续占盘。
+
 ### trae-extension v0.4.12
 
 > 0.4.1–0.4.12 为连续修复版，这里按主题汇总。
 
-- **解码**：新增 WebCodecs 实测硬解探测（v2 探针：1280×720 Constrained Baseline + AVCC description），
-  硬解可用直接播原片，否则回退 720p 代理；面板底部新增「检测中 / 硬解 / 软解」徽章，软解时悬停可看原因。
+- **解码**：新增 WebCodecs 实测硬解探测，硬解可用直接播原片，否则回退 720p 代理；
+  面板底部新增「检测中 / 硬解 / 软解」徽章，软解时悬停可看原因。
 - **音乐**：修复窗口最小化 / 后台时音乐断续——隐藏时立即静音并 `pause`、拦截脚本重试的 `play()`、
   音量与曲目属性不重复下发，恢复播放加 350ms 防抖；窗口仍可见时切应用、点桌面图标不中断。
 - **稳定性**：注入拆成两步（先摘除校验项、完全重启后再写入注入块），彻底消除「安装似乎损坏」；

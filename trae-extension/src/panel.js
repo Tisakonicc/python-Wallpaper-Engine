@@ -281,6 +281,11 @@ select option {
   background: rgba(245,158,11,.18);
   border-color: rgba(245,158,11,.5);
 }
+.hw-badge.na {
+  color: var(--vscode-descriptionForeground);
+  background: rgba(140,140,140,.12);
+  border-color: rgba(140,140,140,.3);
+}
 @keyframes hw-pulse {
   0%, 100% { opacity: .5; }
   50% { opacity: 1; }
@@ -619,10 +624,29 @@ function renderStatus() {
 // 探测一旦出结果就清掉定时器；10 秒还没结果就停在稳定态，连上后自动恢复。
 let hwProbeTimedOut = false;
 let hwProbeTimer = null;
+let hwBadgeKey = '';
 function renderHwBadge() {
   const el = document.getElementById('hwBadge');
   if (!el) return;
-  const hw = state.hwDecode || {};
+  const current = state && state.current ? state.current : null;
+  const key = current ? current.id + '|' + current.kind : 'none';
+  // 切换壁纸后重新计时，避免上一张的“未连接”状态带到下一张
+  if (key !== hwBadgeKey) {
+    hwBadgeKey = key;
+    hwProbeTimedOut = false;
+    if (hwProbeTimer) { clearTimeout(hwProbeTimer); hwProbeTimer = null; }
+  }
+
+  // 非视频壁纸不经过视频解码，硬解 / 软解对当前画面没有意义
+  if (current && current.kind !== 'video') {
+    if (hwProbeTimer) { clearTimeout(hwProbeTimer); hwProbeTimer = null; }
+    el.textContent = '不适用';
+    el.className = 'hw-badge na';
+    el.title = '当前壁纸不是视频，不涉及视频解码；硬解状态只影响视频壁纸';
+    return;
+  }
+
+  const hw = (state && state.hwDecode) || {};
   const resolved = hw.ok === true || hw.ok === false;
   if (resolved) {
     if (hwProbeTimer) { clearTimeout(hwProbeTimer); hwProbeTimer = null; }
@@ -639,14 +663,16 @@ function renderHwBadge() {
     text = '软解';
     cls = 'hw-badge sw';
   } else if (hwProbeTimedOut) {
-    text = '—';
-    cls = 'hw-badge';
+    text = '未连接';
+    cls = 'hw-badge na';
   }
   el.textContent = text;
   el.className = cls;
   el.title = hw.ok === false && hw.reason
     ? ('当前软解：' + hw.reason)
-    : (hwProbeTimedOut ? '硬解探测无响应（背景未连上时会这样，重载窗口后恢复）' : '');
+    : (hwProbeTimedOut
+      ? '背景层还没把探测结果送上来。点一次「重载窗口」，或等渲染页自动重报（约 15 秒）'
+      : '');
 }
 
 function renderAll() {
@@ -1054,6 +1080,10 @@ class WallpaperPanel {
     this.context = context;
     this.handlers = handlers;
     this.panel = null;
+  }
+
+  isVisible() {
+    return !!(this.panel && this.panel.visible);
   }
 
   show() {
