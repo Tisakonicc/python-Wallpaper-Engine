@@ -1,7 +1,7 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# 三市场上架文案（Background Wallpaper Engine）
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# 三市场上架文案（Background Wallpaper Engine）
 
 渠道：**VS Code Marketplace** · **Open VSX** · **GitHub Releases**
-扩展版本：**0.4.16** · publisher / namespace：`tisakonicc`
+扩展版本：**0.4.17** · publisher / namespace：`tisakonicc`
 
 > 第 1 节是三个渠道共用的参数，先复制第 2 节到 VS Code，再把同一份（含第 3 节的安装命令）贴到 Open VSX，最后用第 4 节发 Release。
 
@@ -12,7 +12,7 @@
 | 字段 | 值 |
 | --- | --- |
 | displayName | `Background-Wallpaper-Engine` |
-| version | `0.4.16` |
+| version | `0.4.17` |
 | publisher | `tisakonicc` |
 | categories | `Visualization`, `Other` |
 | engines | `^1.82.0` |
@@ -164,6 +164,16 @@ status bar → pick one.
 ### Release Notes（贴到市场的 Change Log）
 
 ```markdown
+## 0.4.17
+
+| Before (0.4.16) | Now (0.4.17) |
+| --- | --- |
+| Two low windows within 4 seconds triggered a DPR drop, often during startup jank | 3-second warm-up, then three consecutive windows below 45 fps |
+| A further two low windows triggered the 30 fps cap | Only after DPR is reduced, three windows below 30 fps, and 4 seconds since the reduction |
+| Canvas 30 fps alongside CSS 60 fps could feel out of sync | The 30 fps cap is now a last resort, so most wallpapers keep 60 fps |
+| Panel hardware sync ran even if the panel was never opened | It starts only after the panel is opened |
+| Cached hardware state was written to `diag.log` every 15 seconds | Unchanged cached values are no longer written |
+
 ## 0.4.16
 
 | Before (0.4.15) | Now (0.4.16) |
@@ -272,7 +282,7 @@ On plain VS Code? Install from the
 - 发布命令（本机已登录时）：
 
 ```bash
-npx ovsx publish background-wallpaper-engine-0.4.16.vsix -p <token>
+npx ovsx publish background-wallpaper-engine-0.4.17.vsix -p <token>
 ```
 
 ---
@@ -281,13 +291,13 @@ npx ovsx publish background-wallpaper-engine-0.4.16.vsix -p <token>
 
 ### Tag 与标题
 
-- Tag：`trae-v0.4.16`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
-- Release title：`Trae / VS Code 扩展 v0.4.16`
+- Tag：`trae-v0.4.17`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
+- Release title：`Trae / VS Code 扩展 v0.4.17`
 - 是否勾选 Latest：**是**（三渠道的主版本）
 
 ### Release 正文模板
 
-正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.16，含原因、版本对比与安装步骤），不要再单独维护一份模板。
+正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.17，含降载时机、版本对比与安装步骤），不要再单独维护一份模板。
 
 ### 发布前命令
 
@@ -296,11 +306,11 @@ npx ovsx publish background-wallpaper-engine-0.4.16.vsix -p <token>
 npm run package
 
 # 2) 校验和（贴进 Release 正文）
-Get-FileHash background-wallpaper-engine-0.4.16.vsix -Algorithm SHA256 | ForEach-Object Hash
+Get-FileHash background-wallpaper-engine-0.4.17.vsix -Algorithm SHA256 | ForEach-Object Hash
 
 # 3) 传 GitHub Release
-gh release create trae-v0.4.16 background-wallpaper-engine-0.4.16.vsix `
-  --title "Trae / VS Code 扩展 v0.4.16" --notes-file release-notes.md --latest
+gh release create trae-v0.4.17 background-wallpaper-engine-0.4.17.vsix `
+  --title "Trae / VS Code 扩展 v0.4.17" --notes-file release-notes.md --latest
 ```
 
 ---
@@ -311,7 +321,7 @@ gh release create trae-v0.4.16 background-wallpaper-engine-0.4.16.vsix `
 
 | 问题 | 改动位置 |
 | --- | --- |
-| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.16**；PyCharm 插件保持 **0.9.24**；SHA-256 已填入 `release-notes.md`（`773AD1F4…AC3D06`） |
+| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.17**；PyCharm 插件保持 **0.9.24**；SHA-256 已填入 `release-notes.md`（`5FF3BE8B…43FCE`） |
 | README 没有效果图 / 版本对比 | 新增 `docs/images/`（Trae 截图、两张壁纸示例、工作原理图、解码徽章图），根 README 增加「一眼看懂」「工作原理」「能力对照」「这版更新了什么」四节 |
 | 「VS Code 官方市场不收录本扩展」与「已上架 VS Code 官方市场」自相矛盾 | 根 `README.md` 改为「本扩展已上架 VS Code Marketplace 与 Open VSX」 |
 | `package.json` 短描述为中文长句 | 换成第 1 节的英文短描述（≤ 256 字符） |

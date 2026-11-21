@@ -1091,22 +1091,30 @@
    * 网页壁纸跑在同源 iframe 里，canvas 通常按 devicePixelRatio 放大，再叠加全屏
    * blur / mix-blend-mode。核显 + 200% 缩放下很容易把 GPU 填满，连带 IDE 一起卡。
    * 这里包一层 iframe 的 requestAnimationFrame：
-   *   - 统计真实帧率；
-   *   - 连续两轮低于 45fps：把 devicePixelRatio 固定为 1 并触发 resize，canvas 像素降到 1/4；
-   *   - 仍低于 38fps：再把 rAF 限到约 30fps。
+   *   - 前 3 秒是加载/解码/着色器编译的高峰，不参与判断；
+   *   - 之后连续三轮低于 45fps：把 devicePixelRatio 固定为 1 并触发 resize，canvas 像素降到 1/4；
+   *   - 降完仍连续三轮低于 30fps，才把 rAF 限到约 30fps。
    * 只降不升，避免画质来回跳；换壁纸 / 重载页面后重新判断。
+   *
+   * 阈值刻意偏保守：很多网页壁纸只是切换后的头几秒卡，稳定后能回到 50fps 以上，
+   * 过早降载反而会让用户看到一次突兀的清晰度/帧率变化。
    */
   function tuneWebPerf(win) {
     if (!win || win.__bgwePerf) return;
     var rawRaf = win.requestAnimationFrame;
     if (typeof rawRaf !== 'function') return;
 
+    var WARMUP_MS = 3000;
     var perf = {
+      startedAt: performance.now(),
+      warmed: false,
+      sawFrame: false,
       frames: 0,
       windowStart: performance.now(),
       low: 0,
       veryLow: 0,
       reducedDpr: false,
+      reducedAt: 0,
       dprFailed: false,
       throttled: false,
       lastTs: 0,
@@ -1131,6 +1139,7 @@
         // 同一帧里的多个 rAF 回调时间戳相同，只算一帧，避免多循环把 fps 算高
         if (ts !== perf.lastFrameTs) {
           perf.frames += 1;
+          perf.sawFrame = true;
           perf.lastFrameTs = ts;
         }
         cb(ts);
@@ -1158,16 +1167,37 @@
         perf.veryLow = 0;
         return;
       }
-      var fps = perf.frames * 1000 / Math.max(1, now - perf.windowStart);
+      var fps = perf.sawFrame
+        ? perf.frames * 1000 / Math.max(1, now - perf.windowStart)
+        : -1;
       perf.frames = 0;
+      perf.sawFrame = false;
       perf.windowStart = now;
+
+      // 加载后的头几秒不做判断：4K 解码、模糊层首帧、着色器编译都在这段时间
+      if (now - perf.startedAt < WARMUP_MS) {
+        perf.low = 0;
+        perf.veryLow = 0;
+        return;
+      }
+      if (!perf.warmed) {
+        perf.warmed = true;
+        if (fps >= 0) diagReport({ step: 'web-fps', fps: Math.round(fps) });
+        return;
+      }
+      // 这个页面没有 rAF 动画（纯 CSS / 静态），降 DPR 和限帧都没有意义
+      if (fps < 0) {
+        perf.low = 0;
+        perf.veryLow = 0;
+        return;
+      }
 
       if (fps < 45) perf.low += 1;
       else perf.low = 0;
-      if (fps < 38) perf.veryLow += 1;
+      if (fps < 30) perf.veryLow += 1;
       else perf.veryLow = 0;
 
-      if (!perf.reducedDpr && !perf.dprFailed && perf.low >= 2) {
+      if (!perf.reducedDpr && !perf.dprFailed && perf.low >= 3) {
         var dpr = 1;
         try {
           dpr = Number(win.devicePixelRatio) || 1;
@@ -1181,6 +1211,7 @@
               get: function () { return 1; },
             });
             perf.reducedDpr = true;
+            perf.reducedAt = now;
             perf.low = 0;
             perf.veryLow = 0;
             perf.frames = 0;
@@ -1194,7 +1225,14 @@
         }
       }
 
-      if (!perf.throttled && perf.veryLow >= 2) {
+      // 30fps 限制只在 DPR 降完、且仍然持续低于 30fps 时才启用；
+      // 避免 canvas 30fps 和 CSS 60fps 动画混在一起产生「不协调」的观感。
+      if (
+        !perf.throttled &&
+        perf.reducedDpr &&
+        perf.veryLow >= 3 &&
+        now - perf.reducedAt > 4000
+      ) {
         perf.throttled = true;
         diagReport({ step: 'web-perf', mode: '30fps', fps: Math.round(fps) });
       }

@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
+const ide = require('./ide');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -177,6 +178,9 @@ const thumbJobs = new Map();
 // 渲染页实测的硬解能力：null=探测中，true=能硬解（发原片），false=软解（走代理）。
 // 每个 IDE 一个服务进程，这里是进程级状态，天然按 IDE 隔离。
 const hwDecodeInfo = { ok: null, reason: '', ts: 0 };
+// 渲染页每 15 秒会重报一次缓存的硬解结果（用于扩展宿主重启后恢复徽章）。
+// 值没变时只更新内存并通知面板，不再反复写 diag.log。
+let lastHwCachedSig = '';
 
 function videoSourceOf(item) {
   if (item.mediaPath) return item.mediaPath;
@@ -383,7 +387,7 @@ function ensureAudio(item, src) {
 // appKey 由 createHandler 启动时传入，据此判断当前 server 属于哪个 IDE。
 let _proxyNs = null; // 'vscode' | 'trae'
 function setProxyNs(appKey) {
-  _proxyNs = /code\.exe|microsoft vs code/i.test(appKey || '') ? 'vscode' : 'trae';
+  _proxyNs = ide.proxyNamespace(appKey);
 }
 function isVSCodeHost() {
   return _proxyNs === 'vscode';
@@ -658,44 +662,58 @@ function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey, port }
         if (body.length > 64 * 1024) req.destroy();
       });
       req.on('end', () => {
+        let parsed = null;
         try {
-          const file = path.join(path.dirname(THUMB_DIR), 'diag.log');
-          // 轮询级诊断写入很频繁：超过 8 MB 就轮转一份，避免无限增长。
-          let size = 0;
+          parsed = JSON.parse(body);
+        } catch {
+          // body 不是合法 JSON 就只落盘，不做状态更新
+        }
+
+        // 缓存重报且值没变：跳过磁盘写入，只更新内存
+        const hwCached = parsed && parsed.step === 'hw-probe' && parsed.cached === true;
+        const hwSig = hwCached ? `${parsed.ok}|${parsed.reason || ''}` : '';
+        if (!hwCached || hwSig !== lastHwCachedSig) {
           try {
-            size = fs.statSync(file).size;
-          } catch {
-            // 文件还不存在
-          }
-          if (size > 8 * 1024 * 1024) {
-            // 已经膨胀到 32 MB 以上的旧文件直接清空，不再保留一份 .1，避免继续占盘
-            if (size > 32 * 1024 * 1024) {
-              try {
-                fs.truncateSync(file, 0);
-              } catch {
-                // 截断失败也不影响壁纸
-              }
-            } else {
-              const old = `${file}.1`;
-              try {
-                fs.rmSync(old, { force: true });
-                fs.renameSync(file, old);
-              } catch {
+            const file = path.join(path.dirname(THUMB_DIR), 'diag.log');
+            // 轮询级诊断写入很频繁：超过 8 MB 就轮转一份，避免无限增长。
+            let size = 0;
+            try {
+              size = fs.statSync(file).size;
+            } catch {
+              // 文件还不存在
+            }
+            if (size > 8 * 1024 * 1024) {
+              // 已经膨胀到 32 MB 以上的旧文件直接清空，不再保留一份 .1，避免继续占盘
+              if (size > 32 * 1024 * 1024) {
                 try {
                   fs.truncateSync(file, 0);
                 } catch {
                   // 截断失败也不影响壁纸
                 }
+              } else {
+                const old = `${file}.1`;
+                try {
+                  fs.rmSync(old, { force: true });
+                  fs.renameSync(file, old);
+                } catch {
+                  try {
+                    fs.truncateSync(file, 0);
+                  } catch {
+                    // 截断失败也不影响壁纸
+                  }
+                }
               }
             }
+            fs.appendFileSync(file, `${new Date().toISOString()} ${body}\n`, 'utf8');
+          } catch {
+            // 诊断写不进去不影响壁纸
           }
-          fs.appendFileSync(file, `${new Date().toISOString()} ${body}\n`, 'utf8');
-        } catch {
-          // 诊断写不进去不影响壁纸
+          if (hwCached) lastHwCachedSig = hwSig;
+          else lastHwCachedSig = '';
         }
+
         // 渲染页的硬解探测结果：step=hw-probe 时更新进程级状态并通知扩展刷新面板
         try {
-          const parsed = JSON.parse(body);
           if (parsed && parsed.step === 'hw-probe') {
             hwDecodeInfo.ok = parsed.ok === true;
             hwDecodeInfo.reason = parsed.reason ? String(parsed.reason) : '';
@@ -705,7 +723,7 @@ function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey, port }
             }
           }
         } catch {
-          // body 不是合法 JSON 就忽略
+          // 状态更新失败不影响壁纸
         }
         res.writeHead(204);
         res.end();

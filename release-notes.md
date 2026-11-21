@@ -1,40 +1,48 @@
 把 Wallpaper Engine 的壁纸搬进 IDE：视频 / 场景 / 网页壁纸都能动，带壁纸原声，支持 `.mpkg` / `.pkg`
 导入导出分享。全程本机运行，不联网、不上传数据。
 
-v0.4.16 修复一个音频残留问题：**切换壁纸后，上一张网页壁纸的音乐还在播**。
+v0.4.17 调整 **网页壁纸的降载时机**：切换过去后的头几秒不再被误判成「持续卡顿」，
+避免刚稳定下来就突然掉清晰度 / 掉帧；同时做了一轮空闲资源与磁盘读写的小裁剪。
 
 ![Trae CN 中的壁纸背景](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/hero-trae.png)
 
-## 原因
+## 为什么刚切过去会卡一下
 
-网页壁纸的 BGM 在 iframe 里，但引擎会用父窗口的 `AudioContext` +
-`createMediaElementSource` 把音频接进频谱分析图。这个音频图会持有媒体元素：
-换壁纸时只移除 iframe，元素虽然不在 DOM 里，音频图仍然能让它继续出声，所以「魔王追悼」的
-`bgm-suo-nian.mp3` 会在切换后继续播。
+网页壁纸切换后的头几秒要做 4K 图片解码、首帧模糊层合成、着色器编译，帧率天然会低。
+旧逻辑在 4 秒内连续两轮低帧就降 DPR，再两轮低帧就限 30fps，于是会出现：
+
+1. 刚切过去几秒确实卡；
+2. 壁纸自己稳定下来了，但扩展已经降过载；
+3. canvas 变成低分辨率 / 30fps，而 CSS 的模糊、颗粒动画还是 60fps，看起来「不协调」。
+
+v0.4.17 改成：**3 秒预热 + 连续三轮确认 + 30fps 只在 DPR 降完且仍低于 30fps 时启用**。
+如果壁纸只是启动时抖一下、之后能回到 45fps 以上，就不会再触发任何降载。
 
 ## 一眼对比
 
-| 0.4.15 | 0.4.16 |
+| 0.4.16 | 0.4.17 |
 | --- | --- |
-| 换壁纸时直接 `media.textContent = ''` 拆 iframe | 拆 iframe 前先停掉旧 iframe 内所有媒体 |
-| 只处理 `current.video` / `current.audio` | 额外处理 `<audio>`、`<video>` 和 `new Audio()` 创建的实例 |
-| 引擎父层音频图仍可能持有旧元素 | 对每个元素执行 `pause()`、`muted`、`volume=0`、清空 `src`、`load()` |
-| 渲染失败回退时也可能残留声音 | 回退路径同样先停音频 |
+| 切换后 4 秒内两轮低帧就降 DPR | 前 3 秒预热，之后连续三轮（约 6 秒）低于 45fps 才降 |
+| DPR 降完再两轮低帧就限 30fps | 仅当 DPR 已降、连续三轮低于 30fps 且距降 DPR 超过 4 秒才限 30fps |
+| 低帧判断包含启动抖动 | 启动抖动不参与判断；稳定后不降载 |
+| 没有帧率基线记录 | 新增 `web-fps` 基线诊断，便于确认壁纸真实帧率 |
 
-## 改动
+## 其他裁剪
 
-- 新增 `hardStopMedia(el)`：`pause()` + 静音 + 清空 `src` + 移除 `<source>` + `load()`。
-- 新增 `stopWebMedia()`：在拆 iframe 前遍历旧 iframe 内的媒体元素和 `win.__bgweAudios`，
-  再停掉 `media` 容器上引擎挂的音频。
-- `destroyCurrent()` 和 `fallback()` 都先调用 `stopWebMedia()`，再销毁渲染实例。
+- **空闲定时器**：面板硬解同步改为首次打开面板后才启动；焦点兜底轮询 500ms → 1s。
+- **诊断写盘**：缓存硬解状态每 15 秒重报时，值没变不再写 `diag.log`，避免长时间挂机产生无意义写入。
+- **注入/校验**：`product.json` 写回直接复用已读取内容里的换行信息，省掉每次写入前再读一遍 78 KB。
+- **适配层**：新增 `src/ide.js`，集中 `flavorOf()` / `proxyNamespace()`，取代散落的 `IS_TRAE`
+  与 VS Code 正则判断；行为不变，后续 Trae 升级更容易维护。
+- **注入修订号 rev 6**：`runtime.js` 有变化，升级后需要重载一次窗口完成重注入。
 
 ## 安装
 
 **方式一：VSIX（Trae CN / VS Code / VSCodium 通用）**
 
-1. 下载下方 `background-wallpaper-engine-0.4.16.vsix`；
+1. 下载下方 `background-wallpaper-engine-0.4.17.vsix`；
 2. 扩展面板右上角 `···` → **从 VSIX 安装**（也可直接把 vsix 拖进扩展面板）；
-3. **完全退出 IDE 再打开**一次，让扩展完成首次注入。
+3. **完全退出 IDE 再打开**一次，让扩展完成首次注入；已装旧版的用户升级后重载一次窗口。
 
 **方式二：市场安装**
 
@@ -49,15 +57,16 @@ codium --install-extension tisakonicc.background-wallpaper-engine
 
 | 文件 | 用途 |
 | --- | --- |
-| `background-wallpaper-engine-0.4.16.vsix` | VS Code / Trae CN / VSCodium 通用 |
+| `background-wallpaper-engine-0.4.17.vsix` | VS Code / Trae CN / VSCodium 通用 |
 
 SHA-256：
 
 ```
-773AD1F41E2B85FA47D78C5F140C8B6AA4960EE077472DBE725334D38EAC3D06
+5FF3BE8B5C91991E731558642B7F69C0C71A7077FBFFF5F2F924AAA9DE443FCE
 ```
 
 ## 说明
 
-- 本次 `live.js` 有变化；已装旧版的用户升级后重载一次窗口（或切换一次壁纸）即可用上新逻辑。
+- 本次只改网页壁纸的降载时机与扩展侧开销，不影响视频 / 场景壁纸的播放。
+- 如果降载仍然发生且观感突兀，可以在面板里把网页壁纸 FPS 固定到 60，或把壁纸自身的 Density / Grain 调低。
 - PyCharm 插件本次无变化，仍是 [`pycharm-v0.9.24`](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/tag/pycharm-v0.9.24)。

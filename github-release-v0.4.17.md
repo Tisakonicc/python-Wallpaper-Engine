@@ -1,4 +1,4 @@
-# GitHub 文案（仓库 About + Release v0.4.16）
+# GitHub 文案（仓库 About + Release v0.4.17）
 
 ---
 
@@ -28,14 +28,14 @@ wallpaper-engine  vscode-extension  ide  wallpaper  background  pycharm-plugin  
 
 | 字段 | 值 |
 | --- | --- |
-| Tag | `trae-v0.4.16` |
-| Release title | `Trae / VS Code 扩展 v0.4.16` |
-| 附件 | `background-wallpaper-engine-0.4.16.vsix` |
-| SHA-256 | `773AD1F41E2B85FA47D78C5F140C8B6AA4960EE077472DBE725334D38EAC3D06` |
+| Tag | `trae-v0.4.17` |
+| Release title | `Trae / VS Code 扩展 v0.4.17` |
+| 附件 | `background-wallpaper-engine-0.4.17.vsix` |
+| SHA-256 | `5FF3BE8B5C91991E731558642B7F69C0C71A7077FBFFF5F2F924AAA9DE443FCE` |
 | 正文 | 直接使用 [`release-notes.md`](release-notes.md) |
 | 勾选 | Set as the latest release |
 
-本次只修网页壁纸切换后的音频残留，PyCharm 插件保持 `pycharm-v0.9.24` 不变。
+本次调整网页壁纸降载时机，并裁剪空闲资源；PyCharm 插件保持 `pycharm-v0.9.24` 不变。
 
 ---
 
@@ -43,9 +43,10 @@ wallpaper-engine  vscode-extension  ide  wallpaper  background  pycharm-plugin  
 
 直接复制 [`release-notes.md`](release-notes.md)，其中包含：
 
-- 为什么只移除 iframe 停不掉旧 BGM（父窗口 `AudioContext` + `createMediaElementSource` 持有元素）；
-- 0.4.15 → 0.4.16 对比；
-- `hardStopMedia()` / `stopWebMedia()` 的停止流程；
+- 为什么刚切换网页壁纸会卡一下、旧逻辑如何误触发降载；
+- 0.4.16 → 0.4.17 对比（3 秒预热、连续三轮、30fps 仅作最后手段）；
+- 空闲定时器、`diag.log`、`product.json` 读写的裁剪；
+- 新增 `src/ide.js` 适配层；
 - VSIX / 市场两种安装方式。
 
 ---
@@ -57,15 +58,12 @@ cd d:\pycharm\PycharmProjects\Background-Wallpaper-Engine\trae-extension
 
 node -e "console.log(require('./package.json').version)"
 npm run package
-Get-FileHash background-wallpaper-engine-0.4.16.vsix -Algorithm SHA256 | ForEach-Object Hash
+Get-FileHash background-wallpaper-engine-0.4.17.vsix -Algorithm SHA256 | ForEach-Object Hash
 
-gh release create trae-v0.4.16 background-wallpaper-engine-0.4.16.vsix `
-  --title "Trae / VS Code 扩展 v0.4.16" `
+gh release create trae-v0.4.17 background-wallpaper-engine-0.4.17.vsix `
+  --title "Trae / VS Code 扩展 v0.4.17" `
   --notes-file ..\release-notes.md `
   --latest
 ```
 
-发布后同步更新：
-
-1. 根 `README.md` 直链（指向 `trae-v0.4.16`）；
-2. VS Code Marketplace 与 Open VSX 的版本。
+发布后同步更新根 `README.md` 直链与两个市场的版本。

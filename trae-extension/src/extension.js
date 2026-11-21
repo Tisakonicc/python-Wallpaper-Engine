@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const vscode = require('vscode');
+const ide = require('./ide');
 
 const { VERSION, PORT_CANDIDATES } = require('./config');
 const { scanLibrary } = require('./scanner');
@@ -24,9 +25,8 @@ const APP_KEY = String(vscode.env.appRoot || vscode.env.appName || 'unknown');
 
 // Trae 的主窗口本来就是 no-user-gesture-required；只有 VS Code 是 user-gesture-required，
 // 而背景层是 pointer-events: none，永远拿不到手势，所以只在 VS Code 里放宽该项。
-const IS_TRAE = /trae/i.test(
-  `${vscode.env.appName || ''} ${vscode.env.appRoot || ''}`
-);
+const IDE_FLAVOR = ide.flavorOf(vscode.env.appName, vscode.env.appRoot);
+const IS_TRAE = IDE_FLAVOR === 'trae';
 
 const KIND_LABEL = {
   video: '视频',
@@ -777,6 +777,15 @@ async function applyVisual(key, value) {
   await scopedConfig().update(key, next, vscode.ConfigurationTarget.Global);
 }
 
+// 非属主窗口收不到 onHwState 推送，面板可见时靠轮询从 /state.json 补齐徽章状态。
+// 只有真正打开过面板才启动，避免没开面板的窗口每 8 秒空转一次。
+function ensureHwSync() {
+  if (hwSyncTimer) return;
+  hwSyncTimer = setInterval(() => {
+    if (panel && panel.isVisible()) syncHwFromServer();
+  }, 8000);
+}
+
 function ensurePanel() {
   if (panel) return panel;
   panel = new WallpaperPanel(context, {
@@ -810,6 +819,7 @@ function ensurePanel() {
     settings: () =>
       vscode.commands.executeCommand('workbench.action.openSettings', `${CONFIG_SECTION}.steamRoot`),
   });
+  ensureHwSync();
   return panel;
 }
 
@@ -1043,11 +1053,6 @@ async function activate(extensionContext) {
   // 服务越早可用，背景出现得越快（扫描壁纸库放在后面，不挡服务启动）
   await ensureServer();
   await reloadLibrary(false);
-
-  // 非属主窗口收不到 onHwState 推送，靠这个轮询从 /state.json 补齐徽章状态
-  hwSyncTimer = setInterval(() => {
-    if (panel && panel.isVisible()) syncHwFromServer();
-  }, 8000);
 
   // 与是否选过壁纸无关：只要改过 workbench.html，就要保证校验值自洽，
   // 否则每次启动都会弹“安装似乎损坏”。

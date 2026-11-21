@@ -3,6 +3,17 @@
 本文件记录 `trae-extension`（Background-Wallpaper-Engine）的版本变化。
 更早的版本（0.1.5–0.2.14）见 [GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases)。
 
+## 0.4.17
+
+- 网页壁纸降载改为保守策略：前 3 秒预热不判断，之后连续三轮低于 45fps 才降 DPR；
+  30fps 仅在 DPR 降完、连续三轮低于 30fps 且距降 DPR 超过 4 秒时启用。
+- 新增 `web-fps` 基线诊断；页面没有 rAF 动画时跳过降载判断。
+- 面板硬解状态同步改为首次打开面板后才启动定时器；焦点兜底轮询 500ms → 1s。
+- 缓存硬解状态每 15 秒重报时，值没变不再写 `diag.log`。
+- `product.json` 写回复用已读取内容里的换行信息，避免重复读取 78 KB。
+- 新增 `src/ide.js`，集中 `flavorOf()` / `proxyNamespace()`；扩展与本地服务共用。
+- `RUNTIME_REV` 升到 6：升级后需要重载一次窗口完成重注入。
+
 ## 0.4.16
 
 - 修复切换壁纸后旧网页壁纸音乐继续播放：换壁纸 / 禁用 / 渲染失败回退前，先暂停旧 iframe 内的

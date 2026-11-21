@@ -17,7 +17,7 @@ const END_TAG = `<!-- ${MARKER}-end -->`;
 // 注入脚本的修订号：只有运行时脚本本身发生必须更新 html 的变化时才加 1。
 // 与扩展版本解耦，避免每次升级都重写 workbench.html（Trae 每次启动都会把
 // product.json 的校验项补回来，反复重写只会陷入「提示完全重启」的循环）。
-const RUNTIME_REV = '5';
+const RUNTIME_REV = '6';
 const START_RE = new RegExp(`<!-- ${MARKER}-start (\\S+)(?: rev=(\\S+))? csp=(\\S+) -->`);
 
 function findWorkbenchHtml(appRoot) {
@@ -158,22 +158,18 @@ function candidateKeys(appRoot, target) {
 
 function readProduct(appRoot) {
   const file = path.join(appRoot, 'product.json');
-  if (!fs.existsSync(file)) return { ok: true, file, product: null };
+  if (!fs.existsSync(file)) return { ok: true, file, product: null, newline: true };
   try {
-    return { ok: true, file, product: JSON.parse(fs.readFileSync(file, 'utf8')) };
+    const original = fs.readFileSync(file, 'utf8');
+    // 记住原文件是否以换行结尾，写回时直接复用，避免为了这一位再读一遍 78 KB
+    return { ok: true, file, product: JSON.parse(original), newline: original.endsWith('\n') };
   } catch (err) {
     return { ok: false, reason: `product.json 解析失败：${err.message}` };
   }
 }
 
-function writeProduct(file, product) {
-  let text;
-  try {
-    const original = fs.readFileSync(file, 'utf8');
-    text = JSON.stringify(product, null, '\t') + (original.endsWith('\n') ? '\n' : '');
-  } catch {
-    text = JSON.stringify(product, null, '\t') + '\n';
-  }
+function writeProduct(file, product, newline) {
+  const text = JSON.stringify(product, null, '\t') + (newline ? '\n' : '');
   writeAtomic(file, text);
 }
 
@@ -201,7 +197,7 @@ function detachChecksum(appRoot, target) {
 
   for (const key of keys) delete checksums[key];
   try {
-    writeProduct(read.file, read.product);
+    writeProduct(read.file, read.product, read.newline);
   } catch (err) {
     return { ok: false, reason: `写入 product.json 失败：${err.message}${permissionHint(err)}` };
   }
@@ -223,7 +219,7 @@ function attachChecksum(appRoot, target, content) {
 
   checksums[key] = next;
   try {
-    writeProduct(read.file, read.product);
+    writeProduct(read.file, read.product, read.newline);
   } catch (err) {
     return { ok: false, reason: `写入 product.json 失败：${err.message}${permissionHint(err)}` };
   }

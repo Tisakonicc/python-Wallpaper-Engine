@@ -612,8 +612,9 @@ function buildScript(options) {
 
     // 定期健康检查：blur 事件在 Windows 上不总是可靠触发
     // （Win+Tab / Alt+Tab / 点击其他程序的瞬间切换，浏览器可能来不及派发 blur）。
-    // 每 500ms 主动查一次 document.hasFocus() + document.hidden，
-    // 保证 focused 变量总能跟上真实状态。
+    // 每 1 秒主动查一次 document.hasFocus() + document.hidden，
+    // 保证 focused 变量总能跟上真实状态。blur/focus 事件已经能覆盖大多数情况，
+    // 这里只是兜底，没必要每秒唤醒两次。
     var lastPostedHidden = document.hidden;
     setInterval(function () {
       var actuallyFocused = document.hasFocus() && !document.hidden;
@@ -622,7 +623,7 @@ function buildScript(options) {
         lastPostedHidden = document.hidden;
         postFocus();
       }
-    }, 500);
+    }, 1000);
 
     frame.addEventListener('load', function () {
       postFocus();
