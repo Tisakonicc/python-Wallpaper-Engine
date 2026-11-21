@@ -1045,6 +1045,122 @@
   }
 
   /**
+   * 网页壁纸自适应降载。
+   *
+   * 网页壁纸跑在同源 iframe 里，canvas 通常按 devicePixelRatio 放大，再叠加全屏
+   * blur / mix-blend-mode。核显 + 200% 缩放下很容易把 GPU 填满，连带 IDE 一起卡。
+   * 这里包一层 iframe 的 requestAnimationFrame：
+   *   - 统计真实帧率；
+   *   - 连续两轮低于 45fps：把 devicePixelRatio 固定为 1 并触发 resize，canvas 像素降到 1/4；
+   *   - 仍低于 38fps：再把 rAF 限到约 30fps。
+   * 只降不升，避免画质来回跳；换壁纸 / 重载页面后重新判断。
+   */
+  function tuneWebPerf(win) {
+    if (!win || win.__bgwePerf) return;
+    var rawRaf = win.requestAnimationFrame;
+    if (typeof rawRaf !== 'function') return;
+
+    var perf = {
+      frames: 0,
+      windowStart: performance.now(),
+      low: 0,
+      veryLow: 0,
+      reducedDpr: false,
+      dprFailed: false,
+      throttled: false,
+      lastTs: 0,
+      lastFrameTs: 0,
+      timer: 0,
+    };
+    try {
+      win.__bgwePerf = perf;
+    } catch (err) {
+      return;
+    }
+
+    win.requestAnimationFrame = function (cb) {
+      return rawRaf.call(win, function tick(ts) {
+        // 限到约 30fps：不足 32ms 就继续等下一帧，不执行壁纸的回调。
+        // 同一帧的多个回调（ts 相同）要一起放行，避免多个 rAF 循环互相饿死。
+        if (perf.throttled && perf.lastTs && ts !== perf.lastTs && ts - perf.lastTs < 32) {
+          rawRaf.call(win, tick);
+          return;
+        }
+        perf.lastTs = ts;
+        // 同一帧里的多个 rAF 回调时间戳相同，只算一帧，避免多循环把 fps 算高
+        if (ts !== perf.lastFrameTs) {
+          perf.frames += 1;
+          perf.lastFrameTs = ts;
+        }
+        cb(ts);
+      });
+    };
+
+    perf.timer = setInterval(function () {
+      var doc;
+      try {
+        doc = win.document;
+      } catch (err) {
+        doc = null;
+      }
+      // iframe 已导航或换壁纸：停止旧窗口的监控
+      if (!doc || win.__bgwePerf !== perf) {
+        clearInterval(perf.timer);
+        return;
+      }
+      var now = performance.now();
+      // 窗口隐藏 / 暂停期间浏览器本来就会限帧，不能据此判断画面卡
+      if (!shouldPlay()) {
+        perf.frames = 0;
+        perf.windowStart = now;
+        perf.low = 0;
+        perf.veryLow = 0;
+        return;
+      }
+      var fps = perf.frames * 1000 / Math.max(1, now - perf.windowStart);
+      perf.frames = 0;
+      perf.windowStart = now;
+
+      if (fps < 45) perf.low += 1;
+      else perf.low = 0;
+      if (fps < 38) perf.veryLow += 1;
+      else perf.veryLow = 0;
+
+      if (!perf.reducedDpr && !perf.dprFailed && perf.low >= 2) {
+        var dpr = 1;
+        try {
+          dpr = Number(win.devicePixelRatio) || 1;
+        } catch (err) {
+          dpr = 1;
+        }
+        if (dpr > 1) {
+          try {
+            Object.defineProperty(win, 'devicePixelRatio', {
+              configurable: true,
+              get: function () { return 1; },
+            });
+            perf.reducedDpr = true;
+            perf.low = 0;
+            perf.veryLow = 0;
+            perf.frames = 0;
+            perf.windowStart = performance.now();
+            win.dispatchEvent(new win.Event('resize'));
+            diagReport({ step: 'web-perf', mode: 'dpr1', fps: Math.round(fps) });
+          } catch (err) {
+            perf.dprFailed = true;
+            diagReport({ step: 'web-perf-dpr-fail', err: err && err.name, fps: Math.round(fps) });
+          }
+        }
+      }
+
+      if (!perf.throttled && perf.veryLow >= 2) {
+        perf.throttled = true;
+        diagReport({ step: 'web-perf', mode: '30fps', fps: Math.round(fps) });
+      }
+    }, 2000);
+  }
+
+  /**
    * 网页壁纸跑在同源 iframe 里，自己用 <audio> 或 new Audio() 播音频，
    * 引擎的 setVolume() 管不到它。这里直接接管 iframe 内的媒体元素：
    *   1) 覆盖 iframe 的 Audio 构造器，接住脚本自己创建的音频；
@@ -1084,6 +1200,9 @@
     } catch (err) {
       return;
     }
+
+    // 同一个 iframe 只挂一次；掉帧时会自动降 DPR / 限帧
+    tuneWebPerf(win);
 
     function applyOne(el) {
       try {

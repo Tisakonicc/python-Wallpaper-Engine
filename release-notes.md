@@ -1,45 +1,50 @@
 把 Wallpaper Engine 的壁纸搬进 IDE：视频 / 场景 / 网页壁纸都能动，带壁纸原声，支持 `.mpkg` / `.pkg`
 导入导出分享。全程本机运行，不联网、不上传数据。
 
-v0.4.14 针对 **Trae 的启动链路**：同时开着 Trae / VS Code 时，不再反复撞错端口、每个端口干等 4 秒；
-背景出现更快，换端口也更稳。
+v0.4.15 处理 **网页壁纸卡顿**：4K 底图 + 全屏模糊 + 粒子 canvas 的壁纸，在核显机器上会把 GPU
+吃满，连带 IDE 一起卡。现在会自适应降载，优先保住编辑器手感。
 
 ![Trae CN 中的壁纸背景](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/hero-trae.png)
 
+## 为什么「魔王追悼」会卡
+
+以这张壁纸为例，它的负载主要来自：
+
+- 3840×2151 的 4K 底图，两套图层叠放；
+- 整屏 `blur(26px)` 柔光层、`blur(46px)` 光束、`blur(30px)` 扫光，配合 `mix-blend-mode: screen/overlay`；
+- canvas 按 `devicePixelRatio` 渲染，最多 560 个粒子（默认密度 60% ≈ 336 个），每个用大尺寸贴图、
+  `globalCompositeOperation='lighter'` 叠加，部分画 2–3 次；
+- 120Hz 物理步长、9 MB MP3 BGM 和音频律动；
+- 在 2880×1800 / 200% 缩放下，canvas 实际是 2880×1800，再叠加三层全屏模糊，核显填充率和显存带宽很容易见底。
+
+更关键的是：Wallpaper Engine 把它放在独立桌面层，别的程序最大化时可以暂停；这里是 **IDE 窗口内的一层
+iframe**，每一帧都要和编辑器 UI 一起合成，所以壁纸掉帧时打字、滚动也会跟着卡。
+
 ## 一眼对比
 
-| 0.4.13 | 0.4.14 |
+| 0.4.14 | 0.4.15 |
 | --- | --- |
-| 撞到另一个 IDE 占用的端口，要等 4 秒超时才换 | 服务回一个会立刻 `postMessage` 的小页面，注入脚本马上换端口 |
-| 每轮都可能再撞一次 32123 | 已确认「别人的 / 不通」的端口进入本轮黑名单，30 秒后才重试 |
-| 渲染页已经 boot、但 `/state` 还没返回时，4 秒就判死换端口 | 确认端口正确后额外等 15 秒，不再把正在扫描壁纸库的服务换掉 |
-| `/health` 探活最多等 1.5 秒/端口 | 降到 0.6 秒 |
-| 旧导航迟到的 boot 可能误触发等待 | boot 带回导航序号，过期消息直接丢弃 |
-
-日志里出现过 `a=12`（连续 12 次导航才连上），主要就是上面几项叠加造成的。这次改完后，错误端口
-通常在几十毫秒内被排除，正确端口一旦 boot 就不会被误换。
+| 网页壁纸一直按 `devicePixelRatio` 全分辨率渲染，卡了也不管 | 统计 iframe 真实帧率，连续两轮低于 45fps 时 DPR 降到 1，canvas 像素数降到 1/4 |
+| 降完 DPR 仍卡时没有进一步动作 | 仍低于 38fps 时把 rAF 限到约 30fps |
+| 最小化时浏览器限帧也可能被误判成卡顿 | 只在壁纸可见、未暂停时判断 |
+| 画质可能来回跳 | 一旦降载，本次页面生命周期内不再回升 |
 
 ## 改动
 
-- **错误端口立即切换**：`/render/live.html` 检测到 `app` 不匹配时，不再回纯文本 404，而是返回一个
-  会 `parent.postMessage({type:'wrongApp', port})` 的小页面；注入脚本收到后立刻 `advance()`。
-- **端口黑名单**：本轮启动记住已确认的错误端口，`nextLivePortIndex()` 跳过它们；30 秒后自动解除，
-  避免扩展宿主晚启动时无意义地反复重试。
-- **boot 后等待 `/state`**：已经收到渲染页 boot 说明端口选对了，只是壁纸库还在扫描；这时额外等 15 秒，
-  不再 4 秒就换端口。
-- **探活提速**：`probeServer(port, appKey, 600)` 替代默认 1.5 秒，Trae 冷启动每个端口最多少等 0.9 秒。
-- **boot 带序号**：live.js 从 URL 读取 `a` 并回传，runtime 只接受当前导航的 boot，丢掉迟到消息。
+- 在网页壁纸 iframe 的 `requestAnimationFrame` 外再包一层：按时间戳去重统计真实帧率，同帧多个回调只算一帧。
+- 连续两轮低于 45fps：`Object.defineProperty(win, 'devicePixelRatio', {get: () => 1})` 并派发 `resize`，
+  壁纸自己的 canvas 重建为 1× 分辨率。
+- 仍低于 38fps：把 rAF 限到约 30fps；同一帧的多个回调一起放行，避免多个循环互相饿死。
+- 只在 `shouldPlay()` 为真时判断；降载后不恢复，防止画质来回跳。
+- 降载会写一条 `web-perf` 诊断（`dpr1` / `30fps`），可在输出面板查看。
 
 ## 安装
 
 **方式一：VSIX（Trae CN / VS Code / VSCodium 通用）**
 
-1. 下载下方 `background-wallpaper-engine-0.4.14.vsix`；
+1. 下载下方 `background-wallpaper-engine-0.4.15.vsix`；
 2. 扩展面板右上角 `···` → **从 VSIX 安装**（也可直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再打开**一次，让扩展完成首次注入。
-
-> 本次 `RUNTIME_REV` 从 4 升到 5，注入脚本本身有变化；已装过旧版的用户升级后需要**重载一次窗口**
-> 完成重注入。之后普通升级不会再改写 `workbench.html`。
 
 **方式二：市场安装**
 
@@ -54,17 +59,16 @@ codium --install-extension tisakonicc.background-wallpaper-engine
 
 | 文件 | 用途 |
 | --- | --- |
-| `background-wallpaper-engine-0.4.14.vsix` | VS Code / Trae CN / VSCodium 通用 |
+| `background-wallpaper-engine-0.4.15.vsix` | VS Code / Trae CN / VSCodium 通用 |
 
 SHA-256：
 
 ```
-ABB70EE7C02F76E61F81ADD41B508BF7F1301316197A5EA3E7976675BC7491DD
+102FB911CA15D4FF2B50C8C3F9C334B671242C343F8A416D9A1CE33DFE4C7EAF
 ```
 
 ## 说明
 
-- 扩展通过注入 `workbench.html` 实现背景与音频，属非官方实现；采用两步注入后不再出现完整性提示，
-  面板底部「移除注入」可逐字节还原。
-- 与 Trae、Steam、Wallpaper Engine 均无隶属关系；壁纸及音乐版权归原作者所有。
+- 自适应降载只作用于网页壁纸；视频 / 场景壁纸仍按原有 FPS 设置播放。
+- 如果还想更省资源，可以把壁纸自身的 Density 调低、Grain 关掉、Audio Reactive 关掉，并更新核显驱动。
 - PyCharm 插件本次无变化，仍是 [`pycharm-v0.9.24`](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/tag/pycharm-v0.9.24)。

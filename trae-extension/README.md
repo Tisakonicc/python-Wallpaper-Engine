@@ -18,7 +18,7 @@
 ![解码状态徽章](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/decode-badge.png)
 
 - 作者：Tisako
-- 版本：0.4.14
+- 版本：0.4.15
 - 许可证：MIT
 - 支持：Trae CN / VS Code（桌面版）
 - 发布：[GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)
@@ -85,7 +85,7 @@
 
 ### 方式一：VSIX 安装（推荐，Trae CN 与 VS Code 通用）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.14.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.15.vsix`；
 2. 打开 IDE 扩展面板，点右上角 `···` → **从 VSIX 安装**，选中刚下载的文件（也可直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
 
@@ -93,10 +93,10 @@
 
 ```powershell
 # Trae CN
-& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.14.vsix --force
+& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.15.vsix --force
 
 # VS Code
-code --install-extension background-wallpaper-engine-0.4.14.vsix --force
+code --install-extension background-wallpaper-engine-0.4.15.vsix --force
 ```
 
 ### 方式三：市场安装（VS Code 用户最省事）
@@ -183,6 +183,9 @@ codium --install-extension tisakonicc.background-wallpaper-engine
 **面板底部显示「软解」怎么办？**
 说明当前 IDE 的 Chromium 没有把 H.264 交给 GPU 解码。扩展会自动回退到 720p 代理，先保证流畅；悬停徽章可以看到原因（`software-only` / `media-cap-unsupported`）。更新显卡驱动、或在 IDE 启动参数里确认没有禁用硬件加速，通常会回到「硬解」。软解状态下播 1080p / 4K 原片容易卡顿，不代表壁纸有问题。
 
+**网页壁纸（如「魔王追悼」）很卡？**
+这类壁纸常见 4K 底图 + 多层 `blur` / `mix-blend-mode` + 粒子 canvas，核显和高缩放屏幕下会吃满 GPU。0.4.15 起会统计 iframe 真实帧率：连续低于 45fps 先把 DPR 降到 1（canvas 像素 1/4），仍低于 38fps 再限到约 30fps。也可以进一步把壁纸自身的 Density 调低、Grain 关掉、Audio Reactive 关掉。
+
 **显示「未连接」或「不适用」？**
 「不适用」只会在当前壁纸是场景 / 网页 / 图片时出现——这些类型不经过视频解码，硬解状态没有意义。「未连接」表示探测结果还没送到面板：点一次「重载窗口」，或等渲染页 15 秒后自动重报；多窗口时非服务属主窗口也会从本地服务补齐状态。
 
@@ -224,6 +227,7 @@ IDE 会在启动后校验 `workbench.html` 的哈希，而校验清单是**启�
 
 完整版本历史见 [CHANGELOG.md](CHANGELOG.md)。最新几版：
 
+- **0.4.15**：网页壁纸自适应降载——连续掉帧时 iframe DPR 自动降到 1（canvas 像素 1/4），仍低再限到约 30fps；只在壁纸可见时判断，4K + 全屏模糊类壁纸不再把 IDE 拖卡。
 - **0.4.14**：Trae 启动链路优化——错误端口立即切换、跳过已确认的他人端口、boot 后等 state 15 秒不误换、`/health` 探活 1.5s → 0.6s；注入修订号升到 rev 5，升级后需重载一次。
 - **0.4.13**：硬解改用 MediaCapabilities 的 `powerEfficient` 判断，修正此前一律误判「软解」；徽章补上「未连接」「不适用」；多窗口 / 扩展宿主重启后自动恢复状态；`diag.log` 超过 8 MB 自动轮转，超过 32 MB 直接清空。
 - **0.4.12**：新增实测硬解探测与「检测中 / 硬解 / 软解」徽章，硬解可用直接播原片；修复最小化后音乐断续；两步注入彻底消除「安装似乎损坏」；文字增强在 VS Code 生效并三层强化；修正注入块 `app` 字段，重载后背景自动恢复。

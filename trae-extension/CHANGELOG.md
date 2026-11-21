@@ -3,6 +3,13 @@
 本文件记录 `trae-extension`（Background-Wallpaper-Engine）的版本变化。
 更早的版本（0.1.5–0.2.14）见 [GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases)。
 
+## 0.4.15
+
+- 网页壁纸自适应降载：统计 iframe 内真实 rAF 帧率；连续两轮低于 45fps 时把 `devicePixelRatio`
+  固定为 1 并触发 resize，canvas 像素数降到 1/4；仍低于 38fps 时把 rAF 限到约 30fps。
+- 只在壁纸可见、未暂停时判断，避免把最小化期间的系统限帧误判成卡顿；降载后本次页面生命周期内不再回升。
+- 同帧多个 rAF 回调按时间戳去重计数，避免多循环导致 fps 虚高。
+
 ## 0.4.14
 
 - 启动链路：`/render/live.html` 发现 app 不匹配时返回一个会立刻 `postMessage` 的小页面，
