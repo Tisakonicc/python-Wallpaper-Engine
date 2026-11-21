@@ -8,13 +8,13 @@
 
 | 目录 | 目标 IDE | 形态 | 版本 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.15** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.16** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2022.3+（IntelliJ 平台） | Gradle 插件（zip） | **v0.9.24** |
 
 > **版本说明**：`trae-extension` 特别面向 Trae CN，VS Code 用户也可使用且支持壁纸音效（扩展会放宽 VS Code 主窗口的自动播放策略，安装或升级后需完全退出重启一次）。当前版本支持视频 / 场景 / 网页壁纸、壁纸原声、硬解 / 软解状态徽章、场景包导入导出分享。它通过修改 `workbench.html` 注入背景层，属非官方实现，风险自担，与 Trae / Steam / Wallpaper Engine 无隶属关系。详见 [扩展说明](trae-extension/README.md)。
 
 > 直链下载（按 tag 固定，不会随 Release 变化）：
-> Trae 扩展 [background-wallpaper-engine-0.4.15.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.15/background-wallpaper-engine-0.4.15.vsix) ·
+> Trae 扩展 [background-wallpaper-engine-0.4.16.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.16/background-wallpaper-engine-0.4.16.vsix) ·
 > PyCharm 插件 [background-wallpaper-engine-0.9.24.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/pycharm-v0.9.24/background-wallpaper-engine-0.9.24.zip)
 
 ## 一眼看懂
@@ -52,7 +52,7 @@
 
 | 项目 | 上一版 | 当前版 | 主要变化 |
 | --- | --- | --- | --- |
-| Trae / VS Code 扩展 | v0.4.14 | **v0.4.15** | 网页壁纸自适应降载：连续掉帧时 iframe DPR 自动降到 1（canvas 像素 1/4），仍低再限到 30fps；只在可见时判断，4K + 全屏模糊类壁纸不再把 IDE 拖卡 |
+| Trae / VS Code 扩展 | v0.4.15 | **v0.4.16** | 修复切换壁纸后旧网页壁纸音乐继续播放：换壁纸前先把 iframe 内 `<audio>` / `new Audio()` 暂停并清空 src，再拆 iframe，避免引擎的 WebAudio 图继续出声 |
 | PyCharm 插件 | v0.9.16 | **v0.9.24** | 新增视频壁纸背景音乐（AAC / MP3）；新增实验动态画面（10fps，ffmpeg 预抽帧缓存到 D 盘）；动态模式暂不应用虚化 |
 
 解码徽章的状态：检测中 / 硬解 / 软解 / 未连接；当前壁纸不是视频时显示「不适用」。
@@ -63,7 +63,7 @@
 
 ### Trae CN / VS Code（vsix）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.15.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.16.vsix`；
 2. 打开 IDE 的扩展面板，点右上角 `···` → **从 VSIX 安装**（也可以直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**，让扩展完成首次注入。
 
@@ -162,6 +162,14 @@ v0.6.0 改为复用平台自己的「背景图像」能力：`IdeBackgroundUtil.
 - 转换 / 缩略图缓存位于 `D:\TraeData\Background-Wallpaper-Engine`；PyCharm 实验动态帧位于 `D:\WallpaperEngineFrames`
 
 ## 更新日志
+
+### trae-extension v0.4.16
+
+- **修复切换壁纸后旧网页壁纸音乐还在播**：换壁纸 / 禁用 / 渲染失败回退前，先遍历旧 iframe 内的
+  `<audio>`、`<video>` 和 `new Audio()` 创建的实例，执行 `pause()`、`muted`、清空 `src` 并 `load()`，
+  再拆除 iframe。这样即使引擎用父窗口 `AudioContext` + `createMediaElementSource` 接走了音频，
+  也不会留下还在出声的媒体元素。
+- 引擎挂在 `media` 容器上的音频元素一并停止。
 
 ### trae-extension v0.4.15
 

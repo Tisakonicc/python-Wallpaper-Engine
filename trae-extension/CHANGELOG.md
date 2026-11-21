@@ -3,6 +3,13 @@
 本文件记录 `trae-extension`（Background-Wallpaper-Engine）的版本变化。
 更早的版本（0.1.5–0.2.14）见 [GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases)。
 
+## 0.4.16
+
+- 修复切换壁纸后旧网页壁纸音乐继续播放：换壁纸 / 禁用 / 渲染失败回退前，先暂停旧 iframe 内的
+  `<audio>`、`<video>` 和 `new Audio()` 实例，清空 `src` 并 `load()`，再拆除 iframe。
+- 引擎挂在 `media` 容器上的音频元素一并停止，避免父窗口 `AudioContext` 的
+  `createMediaElementSource` 音频图继续出声。
+
 ## 0.4.15
 
 - 网页壁纸自适应降载：统计 iframe 内真实 rAF 帧率；连续两轮低于 45fps 时把 `devicePixelRatio`

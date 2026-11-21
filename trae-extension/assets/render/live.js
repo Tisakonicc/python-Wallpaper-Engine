@@ -475,8 +475,49 @@
     document.documentElement.style.setProperty('--bgcover-fit', fitCss(next.fit));
   }
 
+  /** 彻底停掉一个媒体元素：只 pause 不够，引擎的 WebAudio 图可能还持有它。 */
+  function hardStopMedia(el) {
+    try {
+      el.pause();
+      el.muted = true;
+      el.volume = 0;
+      el.removeAttribute('src');
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.load();
+    } catch (err) {
+      // 元素已失效
+    }
+  }
+
+  /**
+   * 换壁纸前先把旧网页壁纸的音频停干净。
+   *
+   * 网页壁纸的 BGM 在 iframe 里，引擎可能已经用父窗口的 AudioContext +
+   * createMediaElementSource 接走了它；只移除 iframe 时音频图仍会继续出声。
+   * 必须在 iframe 还在的时候 pause / 清 src，再拆 iframe。
+   */
+  function stopWebMedia() {
+    var frame = media.querySelector('iframe');
+    if (frame) {
+      try {
+        var win = frame.contentWindow;
+        var doc = win.document;
+        var list = doc.querySelectorAll('audio, video');
+        for (var i = 0; i < list.length; i++) hardStopMedia(list[i]);
+        var created = win.__bgweAudios || [];
+        for (var j = 0; j < created.length; j++) hardStopMedia(created[j]);
+      } catch (err) {
+        // 跨源 / 文档已销毁
+      }
+    }
+    // 引擎也可能把音频挂在 media 容器本身，一并停掉
+    var nodes = media.querySelectorAll('audio, video');
+    for (var k = 0; k < nodes.length; k++) hardStopMedia(nodes[k]);
+  }
+
   function destroyCurrent() {
     cancelFade();  // 换壁纸 / 销毁时清理残留的 fade 定时器
+    stopWebMedia();
     if (current) {
       if (current.inst) {
         try {
@@ -1594,6 +1635,8 @@
   function fallback(w) {
     if (!current || current.id !== w.id) return;
     diag('fallback-' + (w.kind || '?') + (w.preview ? '-with-preview' : '-no-preview'));
+
+    stopWebMedia();
 
     if (current.inst) {
       try {
