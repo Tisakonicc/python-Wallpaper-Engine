@@ -1,7 +1,7 @@
 ﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿# 三市场上架文案（Background Wallpaper Engine）
 
 渠道：**VS Code Marketplace** · **Open VSX** · **GitHub Releases**
-扩展版本：**0.4.13** · publisher / namespace：`tisakonicc`
+扩展版本：**0.4.14** · publisher / namespace：`tisakonicc`
 
 > 第 1 节是三个渠道共用的参数，先复制第 2 节到 VS Code，再把同一份（含第 3 节的安装命令）贴到 Open VSX，最后用第 4 节发 Release。
 
@@ -12,7 +12,7 @@
 | 字段 | 值 |
 | --- | --- |
 | displayName | `Background-Wallpaper-Engine` |
-| version | `0.4.13` |
+| version | `0.4.14` |
 | publisher | `tisakonicc` |
 | categories | `Visualization`, `Other` |
 | engines | `^1.82.0` |
@@ -164,6 +164,16 @@ status bar → pick one.
 ### Release Notes（贴到市场的 Change Log）
 
 ```markdown
+## 0.4.14
+
+| Before (0.4.13) | Now (0.4.14) |
+| --- | --- |
+| A wrong-port hit waited the full 4-second timeout | The server returns a tiny page that posts `wrongApp`; the injected script switches immediately |
+| Ports owned by another IDE were retried every round | Confirmed wrong ports are skipped for 30 seconds |
+| A correct port was abandoned if `/state` took over 4 seconds | After `boot`, wait up to 15 seconds instead of switching away |
+| `/health` probe waited up to 1.5 s per port | 0.6 s |
+| Late `boot` from an old navigation could trigger a wait | `boot` carries the navigation index and stale ones are dropped |
+
 ## 0.4.13
 
 | Before (0.4.12) | Now (0.4.13) |
@@ -245,7 +255,7 @@ On plain VS Code? Install from the
 - 发布命令（本机已登录时）：
 
 ```bash
-npx ovsx publish background-wallpaper-engine-0.4.13.vsix -p <token>
+npx ovsx publish background-wallpaper-engine-0.4.14.vsix -p <token>
 ```
 
 ---
@@ -254,13 +264,13 @@ npx ovsx publish background-wallpaper-engine-0.4.13.vsix -p <token>
 
 ### Tag 与标题
 
-- Tag：`trae-v0.4.13`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
-- Release title：`Trae / VS Code 扩展 v0.4.13`
+- Tag：`trae-v0.4.14`（沿用现有约定：`trae-v*` 给 VSIX，`pycharm-v*` 给插件 zip）
+- Release title：`Trae / VS Code 扩展 v0.4.14`
 - 是否勾选 Latest：**是**（三渠道的主版本）
 
 ### Release 正文模板
 
-正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.13，含效果图、版本对比与安装步骤），不要再单独维护一份模板。
+正文直接使用根目录的 [`release-notes.md`](release-notes.md)（v0.4.14，含效果图、版本对比与安装步骤），不要再单独维护一份模板。
 
 ### 发布前命令
 
@@ -269,11 +279,11 @@ npx ovsx publish background-wallpaper-engine-0.4.13.vsix -p <token>
 npm run package
 
 # 2) 校验和（贴进 Release 正文）
-Get-FileHash background-wallpaper-engine-0.4.13.vsix -Algorithm SHA256 | ForEach-Object Hash
+Get-FileHash background-wallpaper-engine-0.4.14.vsix -Algorithm SHA256 | ForEach-Object Hash
 
 # 3) 传 GitHub Release
-gh release create trae-v0.4.13 background-wallpaper-engine-0.4.13.vsix `
-  --title "Trae / VS Code 扩展 v0.4.13" --notes-file release-notes.md --latest
+gh release create trae-v0.4.14 background-wallpaper-engine-0.4.14.vsix `
+  --title "Trae / VS Code 扩展 v0.4.14" --notes-file release-notes.md --latest
 ```
 
 ---
@@ -284,7 +294,7 @@ gh release create trae-v0.4.13 background-wallpaper-engine-0.4.13.vsix `
 
 | 问题 | 改动位置 |
 | --- | --- |
-| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.13**；PyCharm 插件保持 **0.9.24**；SHA-256 已填入 `release-notes.md`（`1796DC47…181AF`） |
+| 版本号过期 | 根 `README.md`、`trae-extension/README.md`、`trae-extension/CHANGELOG.md`、`release-notes.md`、`marketplace-copy.md` 的表格、直链、下载名、安装命令、Release Notes 全部更新到 **0.4.14**；PyCharm 插件保持 **0.9.24**；SHA-256 已填入 `release-notes.md`（`ABB70EE7…491DD`） |
 | README 没有效果图 / 版本对比 | 新增 `docs/images/`（Trae 截图、两张壁纸示例、工作原理图、解码徽章图），根 README 增加「一眼看懂」「工作原理」「能力对照」「这版更新了什么」四节 |
 | 「VS Code 官方市场不收录本扩展」与「已上架 VS Code 官方市场」自相矛盾 | 根 `README.md` 改为「本扩展已上架 VS Code Marketplace 与 Open VSX」 |
 | `package.json` 短描述为中文长句 | 换成第 1 节的英文短描述（≤ 256 字符） |

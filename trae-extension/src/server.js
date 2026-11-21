@@ -623,7 +623,7 @@ function analyzeItem(item) {
   });
 }
 
-function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey }) {
+function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey, port }) {
   const note = typeof onLog === 'function' ? onLog : () => {};
   // 启动时锁定 IDE 命名空间：决定 proxy 缓存写到 vscode/ 还是 trae/
   setProxyNs(appKey);
@@ -747,12 +747,27 @@ function createHandler({ getState, getLibrary, assetsRoot, onLog, appKey }) {
     if (renderMatch) {
       if (renderMatch[1] === 'live.html') {
         // 注入脚本会把本 IDE 的 app 标识带在 URL 上。端口被另一个 IDE 的服务占着时
-        // 这里直接 404，父页面据此换端口 —— workbench 的 CSP 不允许 fetch localhost，
-        // 所以只能靠这个 404 来区分「这个端口是不是我的」。
+        // 回一个会 postMessage 的小页面，父页面据此立刻换端口 —— workbench 的 CSP
+        // 不允许 fetch localhost，所以只能借 iframe 来区分「这个端口是不是我的」。
         const expect = url.searchParams.get('app');
         if (expect && appKey && expect !== appKey) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end('wrong app');
+          // 端口被另一个 IDE 的服务占着：返回一个会立刻 postMessage 的小页面，
+          // 注入脚本收到 wrongApp 就能马上换端口，不用再等 4 秒超时。
+          const body = Buffer.from(
+            '<!doctype html><meta charset="utf-8"><script>' +
+              "parent.postMessage({channel:'backgroundcover',type:'wrongApp',port:" +
+              JSON.stringify(port || 0) +
+              "},'*');" +
+            '</script>',
+            'utf8'
+          );
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Length': body.length,
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+          });
+          res.end(body);
           return;
         }
         note('渲染页 live.html 被请求（注入已生效）');

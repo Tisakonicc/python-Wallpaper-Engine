@@ -19,7 +19,12 @@
   // 第一条语句就回报父窗口：只要父窗口收到了，就说明这个脚本真的执行了。
   // 之前排查黑屏时，页面能加载但脚本没有任何下文，靠这条能区分「没执行」和「执行后出错」。
   try {
-    window.parent.postMessage({ channel: CHANNEL, type: 'boot' }, '*');
+    window.parent.postMessage({
+      channel: CHANNEL,
+      type: 'boot',
+      // 回带注入脚本的导航序号：父页面用它丢掉上一次导航迟到的 boot
+      a: new URLSearchParams(location.search).get('a'),
+    }, '*');
   } catch (err) {
     // 父窗口已关闭
   }

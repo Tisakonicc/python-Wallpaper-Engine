@@ -18,7 +18,7 @@
 ![解码状态徽章](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/decode-badge.png)
 
 - 作者：Tisako
-- 版本：0.4.13
+- 版本：0.4.14
 - 许可证：MIT
 - 支持：Trae CN / VS Code（桌面版）
 - 发布：[GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine)
@@ -85,7 +85,7 @@
 
 ### 方式一：VSIX 安装（推荐，Trae CN 与 VS Code 通用）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.13.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.14.vsix`；
 2. 打开 IDE 扩展面板，点右上角 `···` → **从 VSIX 安装**，选中刚下载的文件（也可直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**（不是重载窗口），让扩展完成首次注入。
 
@@ -93,10 +93,10 @@
 
 ```powershell
 # Trae CN
-& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.13.vsix --force
+& "D:\trae\Trae CN\bin\trae-cn.cmd" --install-extension background-wallpaper-engine-0.4.14.vsix --force
 
 # VS Code
-code --install-extension background-wallpaper-engine-0.4.13.vsix --force
+code --install-extension background-wallpaper-engine-0.4.14.vsix --force
 ```
 
 ### 方式三：市场安装（VS Code 用户最省事）
@@ -224,6 +224,7 @@ IDE 会在启动后校验 `workbench.html` 的哈希，而校验清单是**启�
 
 完整版本历史见 [CHANGELOG.md](CHANGELOG.md)。最新几版：
 
+- **0.4.14**：Trae 启动链路优化——错误端口立即切换、跳过已确认的他人端口、boot 后等 state 15 秒不误换、`/health` 探活 1.5s → 0.6s；注入修订号升到 rev 5，升级后需重载一次。
 - **0.4.13**：硬解改用 MediaCapabilities 的 `powerEfficient` 判断，修正此前一律误判「软解」；徽章补上「未连接」「不适用」；多窗口 / 扩展宿主重启后自动恢复状态；`diag.log` 超过 8 MB 自动轮转，超过 32 MB 直接清空。
 - **0.4.12**：新增实测硬解探测与「检测中 / 硬解 / 软解」徽章，硬解可用直接播原片；修复最小化后音乐断续；两步注入彻底消除「安装似乎损坏」；文字增强在 VS Code 生效并三层强化；修正注入块 `app` 字段，重载后背景自动恢复。
 - **0.4.0**：修复 VS Code 视频壁纸无声与卡顿；音频转码改用 Vorbis，VS Code 默认生成 720p 代理；新增代理画质下拉框、按 IDE 隔离缓存和更详细的诊断日志。

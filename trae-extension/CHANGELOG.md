@@ -3,6 +3,16 @@
 本文件记录 `trae-extension`（Background-Wallpaper-Engine）的版本变化。
 更早的版本（0.1.5–0.2.14）见 [GitHub Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases)。
 
+## 0.4.14
+
+- 启动链路：`/render/live.html` 发现 app 不匹配时返回一个会立刻 `postMessage` 的小页面，
+  注入脚本马上换端口，不再每个错误端口等满 4 秒。
+- 端口黑名单：本轮启动跳过已经确认属于其它 IDE / 不通的端口，避免反复撞 32123；30 秒后自动解除。
+- 稳定性：已经收到渲染页 boot、但 `/state` 尚未返回时额外等 15 秒，不再因为壁纸库扫描慢而误换端口。
+- 探活提速：本地 `/health` 超时从 1.5 秒降到 0.6 秒。
+- boot 回带导航序号 `a`，迟到的旧导航消息会被丢弃。
+- 注入修订号 `RUNTIME_REV` 升到 5：升级后需要重载一次窗口完成重注入。
+
 ## 0.4.13
 
 - 硬解判断改用 `navigator.mediaCapabilities.decodingInfo` 的 `powerEfficient`，不再依赖自造 H.264 样本；

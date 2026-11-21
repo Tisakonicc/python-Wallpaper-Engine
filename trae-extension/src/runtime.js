@@ -332,6 +332,11 @@ function buildScript(options) {
     // 900ms 太短：扩展宿主（本地服务）忙的时候，上一次导航还没提交就被下一次 src
     // 覆盖，渲染页始终来不及执行，表现为背景一直不出现。留够时间让文档真正跑起来。
     var VERIFY_MS = 4000;
+    // 已经确认是「别的 IDE 的服务」或「端口不通」的端口，本轮启动先跳过，
+    // 避免 Trae 每次都先去撞另一个 IDE 占着的 32123。
+    var deadPorts = {};
+    // boot 已到但 state 还没到：说明端口选对了，只是服务还在准备，不能再等 4 秒就换端口。
+    var bootWait = false;
 
     function targetPort() {
       return ports[portIndex % ports.length];
@@ -369,10 +374,24 @@ function buildScript(options) {
       if (ready || attempt >= MAX_ATTEMPTS) return;
       activePort = targetPort();
       sawBoot = false;
+      bootWait = false;
       mount();
       beacon('nav-a' + attempt + '-p' + activePort);
       frame.src = frameUrl(activePort);
       scheduleVerify();
+    }
+
+    /** 找下一个没被标记为「别的 IDE / 不通」的端口。 */
+    function nextLivePortIndex(from) {
+      var now = Date.now();
+      for (var step = 1; step < ports.length; step += 1) {
+        var idx = (from + step) % ports.length;
+        var deadAt = deadPorts[ports[idx]] || 0;
+        if (!deadAt || now - deadAt > 30000) return idx;
+      }
+      // 所有候选都被标记过：清空后从头再来，避免一直空转
+      deadPorts = {};
+      return (from + 1) % ports.length;
     }
 
     /** 放弃当前端口：换下一个候选端口重新加载。 */
@@ -385,8 +404,9 @@ function buildScript(options) {
         shutdown();
         return;
       }
-      portIndex += 1;
+      portIndex = nextLivePortIndex(portIndex);
       quickFails = 0;
+      bootWait = false;
       load();
     }
 
@@ -411,19 +431,29 @@ function buildScript(options) {
     }
 
     /** 换了 src 之后，短时间内没有 state 回来就认为这个端口不是本 IDE 的服务。 */
-    function scheduleVerify() {
+    function scheduleVerify(delay) {
       clearTimeout(verifyTimer);
       verifyTimer = setTimeout(function () {
         verifyTimer = null;
         if (ready) return;
+        // 已经收到 boot：端口确定是本 IDE 的，只是 /state 还没准备好（例如库还在扫描）。
+        // 这时换端口只会绕远路，再给 15 秒；仍无 state 才继续探测。
+        if (sawBoot && !bootWait) {
+          bootWait = true;
+          beacon('boot-slow-a' + attempt);
+          scheduleVerify(15000);
+          return;
+        }
         advance();
-      }, VERIFY_MS);
+      }, delay || VERIFY_MS);
     }
 
     function markReady() {
       ready = true;
       clearTimeout(verifyTimer);
       verifyTimer = null;
+      deadPorts = {};
+      bootWait = false;
     }
 
     function mount() {
@@ -509,14 +539,20 @@ function buildScript(options) {
         lastPong = Date.now();
         return;
       }
-      // 渲染页脚本第一条语句就会发 boot：收不到说明脚本根本没执行
+      // 渲染页脚本第一条语句就会发 boot：收不到说明脚本根本没执行。
+      // 旧导航的 boot 可能比新导航晚到，带序号时只认当前 attempt。
       if (data.type === 'boot') {
+        if (data.a != null && String(data.a) !== String(attempt)) return;
         sawBoot = true;
         beacon('frame-boot-a' + attempt);
         return;
       }
-      // 渲染页发现这个端口的主人是另一个 IDE（老版本服务没有 app 校验时会走到这里）
+      // 渲染页发现这个端口的主人是另一个 IDE：标记后立刻换端口，不再干等 4 秒。
+      // 带 port 的新版服务会校验端口，避免旧导航的迟到消息误伤当前端口。
       if (data.type === 'wrongApp') {
+        if (data.port && Number(data.port) !== activePort) return;
+        deadPorts[activePort] = Date.now();
+        beacon('wrong-app-p' + activePort);
         advance();
         return;
       }

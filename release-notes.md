@@ -1,46 +1,45 @@
 把 Wallpaper Engine 的壁纸搬进 IDE：视频 / 场景 / 网页壁纸都能动，带壁纸原声，支持 `.mpkg` / `.pkg`
 导入导出分享。全程本机运行，不联网、不上传数据。
 
-v0.4.13 集中修解码状态：**硬解判断不再误判成软解**，徽章补上了此前没说明的「未连接」和
-「不适用」，多窗口 / 扩展宿主重启后也会自动恢复。
+v0.4.14 针对 **Trae 的启动链路**：同时开着 Trae / VS Code 时，不再反复撞错端口、每个端口干等 4 秒；
+背景出现更快，换端口也更稳。
 
 ![Trae CN 中的壁纸背景](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/hero-trae.png)
 
 ## 一眼对比
 
-| 0.4.12 | 0.4.13 |
+| 0.4.13 | 0.4.14 |
 | --- | --- |
-| 用自造 H.264 样本让 WebCodecs 实测，样本被 Chromium 判为 `Unsupported configuration` 时一律显示「软解」 | 改用 `navigator.mediaCapabilities.decodingInfo` 的 `powerEfficient`，由浏览器自己的解码能力表判断；旧内核才退回 WebCodecs |
-| 探测结果没送到面板时只显示一个「—」，悬停才解释 | 明确显示「未连接」，点重载或等 15 秒自动重报 |
-| 网页 / 场景壁纸也显示「检测中 / 软解」，让人误以为当前画面在软解 | 非视频壁纸显示「不适用」，说明它不经过视频解码 |
-| 多窗口下非服务属主窗口永远停在「—」 | 从 `/state.json` 同步状态，8 秒内补齐 |
-| `diag.log` 无限增长（本机已 101 MB） | 超过 8 MB 自动轮转为 `diag.log.1` |
+| 撞到另一个 IDE 占用的端口，要等 4 秒超时才换 | 服务回一个会立刻 `postMessage` 的小页面，注入脚本马上换端口 |
+| 每轮都可能再撞一次 32123 | 已确认「别人的 / 不通」的端口进入本轮黑名单，30 秒后才重试 |
+| 渲染页已经 boot、但 `/state` 还没返回时，4 秒就判死换端口 | 确认端口正确后额外等 15 秒，不再把正在扫描壁纸库的服务换掉 |
+| `/health` 探活最多等 1.5 秒/端口 | 降到 0.6 秒 |
+| 旧导航迟到的 boot 可能误触发等待 | boot 带回导航序号，过期消息直接丢弃 |
 
-四种徽章状态：
+日志里出现过 `a=12`（连续 12 次导航才连上），主要就是上面几项叠加造成的。这次改完后，错误端口
+通常在几十毫秒内被排除，正确端口一旦 boot 就不会被误换。
 
-![解码状态徽章](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/decode-badge.png)
+## 改动
 
-## 修复
-
-- **硬解误判**：此前探针是一段 16×16、Annex-B、不带 `description` 的 H.264 样本。部分 Chromium / Electron
-  会拒绝这个配置（`decoder-error: Unsupported configuration`），导致所有机器都显示「软解」。现在优先用
-  MediaCapabilities 的 `powerEfficient` 判断，并按 1080p High / 720p Main 两个常见档次查询；只有旧内核
-  没有该 API 时才走 WebCodecs。
-- **「未连接」不是硬解也不是软解**：它是探测结果没送到面板时的兜底状态。渲染页现在每 15 秒重报一次
-  缓存结果，扩展宿主重启后能自己恢复，不必再手动重载。
-- **多窗口徽章不同步**：`onHwState` 只推给起本地服务的那个扩展宿主，其它窗口收不到。现在非属主窗口
-  会定期从 `/state.json` 读取 `hwDecode`。
-- **非视频壁纸的无效状态**：当前壁纸是场景 / 网页 / 图片时显示「不适用」，不再让「软解」看起来像是
-  当前画面正在软解。
-- **诊断日志膨胀**：`diag.log` 超过 8 MB 自动轮转，最多保留一份旧的 `diag.log.1`；超过 32 MB 的旧文件直接清空。
+- **错误端口立即切换**：`/render/live.html` 检测到 `app` 不匹配时，不再回纯文本 404，而是返回一个
+  会 `parent.postMessage({type:'wrongApp', port})` 的小页面；注入脚本收到后立刻 `advance()`。
+- **端口黑名单**：本轮启动记住已确认的错误端口，`nextLivePortIndex()` 跳过它们；30 秒后自动解除，
+  避免扩展宿主晚启动时无意义地反复重试。
+- **boot 后等待 `/state`**：已经收到渲染页 boot 说明端口选对了，只是壁纸库还在扫描；这时额外等 15 秒，
+  不再 4 秒就换端口。
+- **探活提速**：`probeServer(port, appKey, 600)` 替代默认 1.5 秒，Trae 冷启动每个端口最多少等 0.9 秒。
+- **boot 带序号**：live.js 从 URL 读取 `a` 并回传，runtime 只接受当前导航的 boot，丢掉迟到消息。
 
 ## 安装
 
 **方式一：VSIX（Trae CN / VS Code / VSCodium 通用）**
 
-1. 下载下方 `background-wallpaper-engine-0.4.13.vsix`；
+1. 下载下方 `background-wallpaper-engine-0.4.14.vsix`；
 2. 扩展面板右上角 `···` → **从 VSIX 安装**（也可直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再打开**一次，让扩展完成首次注入。
+
+> 本次 `RUNTIME_REV` 从 4 升到 5，注入脚本本身有变化；已装过旧版的用户升级后需要**重载一次窗口**
+> 完成重注入。之后普通升级不会再改写 `workbench.html`。
 
 **方式二：市场安装**
 
@@ -55,12 +54,12 @@ codium --install-extension tisakonicc.background-wallpaper-engine
 
 | 文件 | 用途 |
 | --- | --- |
-| `background-wallpaper-engine-0.4.13.vsix` | VS Code / Trae CN / VSCodium 通用 |
+| `background-wallpaper-engine-0.4.14.vsix` | VS Code / Trae CN / VSCodium 通用 |
 
 SHA-256：
 
 ```
-1796DC4745E562B102BCE6EBB3171A84DD68A61D679F183A9A39F340977181AF
+ABB70EE7C02F76E61F81ADD41B508BF7F1301316197A5EA3E7976675BC7491DD
 ```
 
 ## 说明

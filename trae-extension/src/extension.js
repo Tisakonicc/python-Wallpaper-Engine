@@ -454,7 +454,8 @@ async function ensureServer() {
   for (const port of PORT_CANDIDATES) {
     // 本 IDE 的其它窗口已经起了服务：直接共用，不必再注入一次。
     // 端口被别的 IDE 占着时 probe 会返回 null，接着往下试下一个端口。
-    const health = await probeServer(port, APP_KEY);
+    // 本地回环的 /health 是毫秒级响应，600ms 足够；默认 1.5s 会拖慢 Trae 冷启动
+    const health = await probeServer(port, APP_KEY, 600);
     if (health) {
       serverPort = port;
       isOwner = false;

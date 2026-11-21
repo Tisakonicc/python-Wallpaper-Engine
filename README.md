@@ -8,13 +8,13 @@
 
 | 目录 | 目标 IDE | 形态 | 版本 |
 | --- | --- | --- | --- |
-| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.13** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
+| [trae-extension/](trae-extension/) | Trae CN / VS Code / VSCodium 等 VS Code 内核 IDE | VS Code 扩展（vsix） | **v0.4.14** · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=tisakonicc.background-wallpaper-engine) · [Open VSX](https://open-vsx.org/extension/tisakonicc/background-wallpaper-engine) |
 | [pycharm-plugin/](pycharm-plugin/) | PyCharm 2022.3+（IntelliJ 平台） | Gradle 插件（zip） | **v0.9.24** |
 
 > **版本说明**：`trae-extension` 特别面向 Trae CN，VS Code 用户也可使用且支持壁纸音效（扩展会放宽 VS Code 主窗口的自动播放策略，安装或升级后需完全退出重启一次）。当前版本支持视频 / 场景 / 网页壁纸、壁纸原声、硬解 / 软解状态徽章、场景包导入导出分享。它通过修改 `workbench.html` 注入背景层，属非官方实现，风险自担，与 Trae / Steam / Wallpaper Engine 无隶属关系。详见 [扩展说明](trae-extension/README.md)。
 
 > 直链下载（按 tag 固定，不会随 Release 变化）：
-> Trae 扩展 [background-wallpaper-engine-0.4.13.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.13/background-wallpaper-engine-0.4.13.vsix) ·
+> Trae 扩展 [background-wallpaper-engine-0.4.14.vsix](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/trae-v0.4.14/background-wallpaper-engine-0.4.14.vsix) ·
 > PyCharm 插件 [background-wallpaper-engine-0.9.24.zip](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/download/pycharm-v0.9.24/background-wallpaper-engine-0.9.24.zip)
 
 ## 一眼看懂
@@ -52,7 +52,7 @@
 
 | 项目 | 上一版 | 当前版 | 主要变化 |
 | --- | --- | --- | --- |
-| Trae / VS Code 扩展 | v0.4.12 | **v0.4.13** | 硬解改用 MediaCapabilities 的 `powerEfficient` 判断，修正始终误判「软解」；多窗口 / 扩展宿主重启后徽章从「未连接」自动恢复；非视频壁纸显示「不适用」；diag.log 加上限 |
+| Trae / VS Code 扩展 | v0.4.13 | **v0.4.14** | Trae 启动链路优化：错误端口立即切换、跳过已确认的他人端口、boot 后等 state 15 秒不误换、/health 探活 1.5s → 0.6s；冷启动不再反复撞 32123 |
 | PyCharm 插件 | v0.9.16 | **v0.9.24** | 新增视频壁纸背景音乐（AAC / MP3）；新增实验动态画面（10fps，ffmpeg 预抽帧缓存到 D 盘）；动态模式暂不应用虚化 |
 
 解码徽章的状态：检测中 / 硬解 / 软解 / 未连接；当前壁纸不是视频时显示「不适用」。
@@ -63,7 +63,7 @@
 
 ### Trae CN / VS Code（vsix）
 
-1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.13.vsix`；
+1. 到 [Releases](https://github.com/Tisakonicc/python-Wallpaper-Engine/releases/latest) 下载 `background-wallpaper-engine-0.4.14.vsix`；
 2. 打开 IDE 的扩展面板，点右上角 `···` → **从 VSIX 安装**（也可以直接把 vsix 拖进扩展面板）；
 3. **完全退出 IDE 再重新打开**，让扩展完成首次注入。
 
@@ -161,6 +161,18 @@ v0.6.0 改为复用平台自己的「背景图像」能力：`IdeBackgroundUtil.
 - 转换 / 缩略图缓存位于 `D:\TraeData\Background-Wallpaper-Engine`；PyCharm 实验动态帧位于 `D:\WallpaperEngineFrames`
 
 ## 更新日志
+
+### trae-extension v0.4.14
+
+- **错误端口立即切换**：端口被另一个 IDE 的服务占着时，服务返回一个会立刻 `postMessage` 的小页面，
+  注入脚本收到后马上换端口，不再每个端口干等 4 秒。
+- **跳过已知错误端口**：本轮启动会记住「别的 IDE / 不通」的端口，不再反复撞 32123；
+  30 秒后自动解除标记。
+- **boot 后不误换端口**：已经收到渲染页 boot、但 `/state` 还没到时额外等 15 秒，
+  不再因为壁纸库扫描慢而把正确端口判死。
+- **探活提速**：本地 `/health` 超时从 1.5 秒降到 0.6 秒，Trae 冷启动少等最多约 0.9 秒/端口。
+- **boot 带序号**：迟到的旧导航 boot 会被丢弃，避免误触发 15 秒等待。
+- **注入修订号 rev 5**：升级后需要重载一次窗口完成重注入；之后普通升级不再改写 workbench.html。
 
 ### trae-extension v0.4.13
 
