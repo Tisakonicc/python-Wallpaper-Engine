@@ -31,7 +31,7 @@ wallpaper-engine  vscode-extension  ide  wallpaper  background  pycharm-plugin  
 | Tag | `trae-v0.4.17` |
 | Release title | `Trae / VS Code 扩展 v0.4.17` |
 | 附件 | `background-wallpaper-engine-0.4.17.vsix` |
-| SHA-256 | `5FF3BE8B5C91991E731558642B7F69C0C71A7077FBFFF5F2F924AAA9DE443FCE` |
+| SHA-256 | `0E32BB4A232948C76631D9F9730CE76F489DA663D55B0CCBBCEAE7A76238E111` |
 | 正文 | 直接使用 [`release-notes.md`](release-notes.md) |
 | 勾选 | Set as the latest release |
 
