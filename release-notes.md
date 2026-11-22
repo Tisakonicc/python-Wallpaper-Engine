@@ -4,8 +4,6 @@
 v0.4.17 调整 **网页壁纸的降载时机**：切换过去后的头几秒不再被误判成「持续卡顿」，
 避免刚稳定下来就突然掉清晰度 / 掉帧；同时做了一轮空闲资源与磁盘读写的小裁剪。
 
-![Trae CN 中的壁纸背景](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/hero-trae.png)
-
 ## 为什么刚切过去会卡一下
 
 网页壁纸切换后的头几秒要做 4K 图片解码、首帧模糊层合成、着色器编译，帧率天然会低。

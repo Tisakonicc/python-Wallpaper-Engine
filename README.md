@@ -2,7 +2,11 @@
 
 把 **Steam Wallpaper Engine** 的壁纸（视频 / 场景 / 网页）以及本地导入的视频、图片渲染成 IDE 编辑器背景。全部在本机运行，不上传任何数据。
 
-![Trae CN 中运行的壁纸背景](docs/images/hero-trae.png)
+![壁纸库：视频 / 场景 / 网页 / 动图分类，搜索与导入](docs/images/panel-library.jpg)
+
+| 外观：透明度、压暗、文字增强、模糊、面板底衬 | 播放：帧率、壁纸自带音乐、音量、失焦暂停 |
+| --- | --- |
+| ![外观设置](docs/images/panel-appearance.jpg) | ![播放设置](docs/images/panel-playback.jpg) |
 
 本仓库同时维护两个 IDE 的插件实现：
 

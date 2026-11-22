@@ -6,7 +6,11 @@
 
 > **30 秒上手**：安装 → 完全退出 IDE 再打开 → 点状态栏「壁纸」挑一张。
 
-![Trae CN 中的壁纸背景](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/hero-trae.png)
+![壁纸库：视频 / 场景 / 网页 / 动图分类，搜索与导入](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/panel-library.jpg)
+
+| 外观：透明度、压暗、文字增强、模糊、面板底衬 | 播放：帧率、壁纸自带音乐、音量、失焦暂停 |
+| --- | --- |
+| ![外观设置](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/panel-appearance.jpg) | ![播放设置](https://raw.githubusercontent.com/Tisakonicc/python-Wallpaper-Engine/main/docs/images/panel-playback.jpg) |
 
 | 暗色壁纸：默认设置就够清晰 | 亮色壁纸：建议开「自动对比度」或调高「面板底衬」 |
 | --- | --- |
