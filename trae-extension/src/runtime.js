@@ -491,6 +491,35 @@ function buildScript(options) {
       });
     }
 
+    // 背景 iframe 是 pointer-events: none，里面收不到任何鼠标事件。
+    // 场景壁纸的鼠标轨迹、待机计时都依赖指针位置；收不到时，待机计时器
+    // （这类壁纸常见 60~120 秒）到点就会自己播待机动画/语音，
+    // 听感上像音乐突然从头开始、还和 BGM 叠在一起。
+    // 这里把 workbench 上的指针活动节流后转发给渲染页，由它推给引擎。
+    var lastPointerAt = 0;
+    function postPointer(x, y, buttons, leave) {
+      var now = Date.now();
+      if (!leave && now - lastPointerAt < 80) return;
+      lastPointerAt = now;
+      post({
+        channel: CHANNEL,
+        type: 'pointer',
+        x: x,
+        y: y,
+        buttons: buttons || 0,
+        leave: !!leave,
+      });
+    }
+    // 只转发移动，不转发点击：背景层本来就不接收点击（点击都落在编辑器上），
+    // 把点击一起推过去会让「点击交互」类壁纸在每次点编辑器时都播语音/动画。
+    document.addEventListener('pointermove', function (e) {
+      postPointer(e.clientX, e.clientY, e.buttons, false);
+    }, { passive: true, capture: true });
+    // 指针离开窗口时通知引擎松开悬停状态，避免壁纸停在最后一个位置上
+    document.addEventListener('mouseleave', function () {
+      postPointer(0, 0, 0, true);
+    }, { passive: true });
+
     function apply(next) {
       // 底衬强度与开关无关，随时可调，所以先于「开关没变」的早退处理
       var surface = next && typeof next.surface === 'number' ? next.surface : 0;

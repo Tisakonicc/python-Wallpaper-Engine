@@ -520,6 +520,10 @@
     stopWebMedia();
     if (current) {
       if (current.inst) {
+        // 先静音再销毁：destroy() 只是开始收尾，旧场景的声音图层可能比新实例
+        // 晚几百毫秒才停，切换/重建的瞬间会听到两段音乐叠在一起。
+        try { current.inst.setVolume(0); } catch (err) {}
+        try { current.inst.pause(); } catch (err) {}
         try {
           current.inst.destroy();
         } catch (err) {
@@ -651,6 +655,7 @@
           trackAudioContext(ctx);
           // 隐藏期间新建的上下文直接挂起，等恢复播放时再 resume
           if (!shouldPlay()) {
+            ctx.__bgweSuspended = true;
             var p = ctx.suspend();
             if (p && p.catch) p.catch(function () {});
           }
@@ -700,10 +705,14 @@
       try {
         if (pause) {
           if (ctx.state === 'running') {
+            ctx.__bgweSuspended = true;
             var p = ctx.suspend();
             if (p && p.catch) p.catch(function () {});
           }
-        } else if (ctx.state === 'suspended') {
+        } else if (ctx.state === 'suspended' && ctx.__bgweSuspended) {
+          // 只恢复自己挂起的上下文：引擎/壁纸自己 suspend 是有原因的
+          // （切歌、场景脚本暂停播放），强行 resume 会让它重新起播、听起来像重头开始。
+          ctx.__bgweSuspended = false;
           var r = ctx.resume();
           if (r && r.catch) r.catch(function () {});
         }
@@ -1092,8 +1101,8 @@
    * blur / mix-blend-mode。核显 + 200% 缩放下很容易把 GPU 填满，连带 IDE 一起卡。
    * 这里包一层 iframe 的 requestAnimationFrame：
    *   - 前 3 秒是加载/解码/着色器编译的高峰，不参与判断；
-   *   - 之后连续三轮低于 45fps：把 devicePixelRatio 固定为 1 并触发 resize，canvas 像素降到 1/4；
-   *   - 降完仍连续三轮低于 30fps，才把 rAF 限到约 30fps。
+   *   - 之后连续两轮低于 45fps：把 devicePixelRatio 固定为 1 并触发 resize，canvas 像素降到 1/4；
+   *   - 降完仍连续两轮低于 34fps，才把 rAF 限到约 30fps。
    * 只降不升，避免画质来回跳；换壁纸 / 重载页面后重新判断。
    *
    * 阈值刻意偏保守：很多网页壁纸只是切换后的头几秒卡，稳定后能回到 50fps 以上，
@@ -1194,10 +1203,10 @@
 
       if (fps < 45) perf.low += 1;
       else perf.low = 0;
-      if (fps < 30) perf.veryLow += 1;
+      if (fps < 34) perf.veryLow += 1;
       else perf.veryLow = 0;
 
-      if (!perf.reducedDpr && !perf.dprFailed && perf.low >= 3) {
+      if (!perf.reducedDpr && !perf.dprFailed && perf.low >= 2) {
         var dpr = 1;
         try {
           dpr = Number(win.devicePixelRatio) || 1;
@@ -1225,13 +1234,13 @@
         }
       }
 
-      // 30fps 限制只在 DPR 降完、且仍然持续低于 30fps 时才启用；
+      // 30fps 限制只在 DPR 降完、且仍然持续低于 34fps 时才启用；
       // 避免 canvas 30fps 和 CSS 60fps 动画混在一起产生「不协调」的观感。
       if (
         !perf.throttled &&
         perf.reducedDpr &&
-        perf.veryLow >= 3 &&
-        now - perf.reducedAt > 4000
+        perf.veryLow >= 2 &&
+        now - perf.reducedAt > 3000
       ) {
         perf.throttled = true;
         diagReport({ step: 'web-perf', mode: '30fps', fps: Math.round(fps) });
@@ -1747,8 +1756,14 @@
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
+  // 每次 build 递增。mount 是异步的：同一张壁纸连续 build 两次时，先返回的
+  // 旧实例会被后一个覆盖，但旧实例不会有人销毁 —— 两个渲染器同时出画、同时
+  // 出声，听起来就是「重音」。这里用序号把过期实例直接销毁。
+  var buildSeq = 0;
+
   function build(next) {
     destroyCurrent();
+    var seq = ++buildSeq;
     var w = next.wallpaper;
     diagReport({ step: 'build', wp: w.id, kind: w.kind });
     current = {
@@ -1923,8 +1938,10 @@
       })
       .then(function (inst) {
         if (!inst) return;
-        if (destroyed || !current || current.id !== w.id) {
+        if (destroyed || seq !== buildSeq || !current || current.id !== w.id) {
           try {
+            inst.setVolume(0);
+            inst.pause();
             inst.destroy();
           } catch (err) {
             // 忽略
@@ -1940,6 +1957,7 @@
         }, 200);
       })
       .catch(function (err) {
+        if (seq !== buildSeq) return;
         console.warn('[background-cover] mount failed:', err);
         if (current && current.id === w.id) {
           fallback(w);
@@ -1962,11 +1980,11 @@
     applyVisuals(next);
     applyAudio(next);
     var id = next.wallpaper.id;
-    var fpsChanged = current && current.fps !== (Number(next.fps) || 60);
-    var rebuilding =
-      !current ||
-      current.id !== id ||
-      (fpsChanged && current.kind !== 'video' && current.kind !== 'image');
+    var wantFps = Number(next.fps) || 60;
+    var fpsChanged = !!current && current.fps !== wantFps;
+    // 只换帧率时不再重建：重建等于把场景/网页整体重新加载一遍，
+    // 音乐会从头播放，看起来就是「播一会儿又重头开始」。
+    var rebuilding = !current || current.id !== id;
 
     diagReport({
       step: 'setState-decide',
@@ -1987,6 +2005,17 @@
     } else {
       applyMusicTrack(next);
       report(true);
+      if (fpsChanged) {
+        // 引擎自带 setFps：只改调度间隔，不重新加载场景
+        current.fps = wantFps;
+        if (current.inst) {
+          try {
+            current.inst.setFps(wantFps);
+          } catch (err) {
+            // 渲染器还没就绪，下一次状态轮询会再试
+          }
+        }
+      }
       if (current.inst) {
         try {
           current.inst.setFit(fitWwgl(next.fit));
@@ -2068,6 +2097,21 @@
         if (parentHidden) wasHidden = true;
       }
       syncPlayback();
+      return;
+    }
+    // 背景层是 pointer-events: none，iframe 自己收不到鼠标事件。
+    // 父页面把 workbench 上的指针活动转发过来，再推给引擎：场景壁纸的
+    // 鼠标轨迹、点击交互、待机计时都依赖它，收不到就会在待机时间到点后
+    // 自己播待机动画/语音（听着像音乐重新开始，还会和 BGM 叠在一起）。
+    if (data.type === 'pointer') {
+      if (!current || !current.inst || !shouldPlay()) return;
+      try {
+        if (data.leave) current.inst.pointerLeave();
+        else current.inst.pushPointer(Number(data.x) || 0, Number(data.y) || 0, Number(data.buttons) || 0, 0);
+      } catch (err) {
+        // 实例还没就绪 / 已销毁
+      }
+      return;
     }
   });
 
@@ -2156,6 +2200,24 @@
         return true;
       });
   }
+
+  // 场景壁纸直接画在本页，没法像网页壁纸那样包 iframe 的 rAF，只能在本页量。
+  // 只在低于 40fps 时上报（每 5 秒一次），用来判断「某个 IDE 里更卡」到底是
+  // 壁纸自身渲染慢，还是 IDE 主线程/合成器抢了资源。
+  var fpsFrames = 0;
+  var fpsWindowStart = performance.now();
+  function sampleSceneFps() {
+    fpsFrames += 1;
+    requestAnimationFrame(sampleSceneFps);
+    var now = performance.now();
+    if (now - fpsWindowStart < 5000) return;
+    var fps = fpsFrames * 1000 / (now - fpsWindowStart);
+    fpsFrames = 0;
+    fpsWindowStart = now;
+    if (!current || current.kind !== 'scene' || !current.inst || document.hidden) return;
+    if (fps < 40) diagReport({ step: 'scene-fps', fps: Math.round(fps) });
+  }
+  requestAnimationFrame(sampleSceneFps);
 
   verifyOwner().then(function (ok) {
     diagReport({ step: 'owner-check', ok: !!ok });

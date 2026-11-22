@@ -17,7 +17,7 @@ const END_TAG = `<!-- ${MARKER}-end -->`;
 // 注入脚本的修订号：只有运行时脚本本身发生必须更新 html 的变化时才加 1。
 // 与扩展版本解耦，避免每次升级都重写 workbench.html（Trae 每次启动都会把
 // product.json 的校验项补回来，反复重写只会陷入「提示完全重启」的循环）。
-const RUNTIME_REV = '6';
+const RUNTIME_REV = '7';
 const START_RE = new RegExp(`<!-- ${MARKER}-start (\\S+)(?: rev=(\\S+))? csp=(\\S+) -->`);
 
 function findWorkbenchHtml(appRoot) {
